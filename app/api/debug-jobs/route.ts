@@ -4,6 +4,9 @@ import { createLogger } from '../../../lib/logger';
 import * as fs from 'fs';
 import * as path from 'path';
 
+// This route needs to be dynamic as it uses request.url
+export const dynamic = 'force-dynamic';
+
 const logger = createLogger('debug-jobs-api');
 
 // API endpoint for debugging job processing

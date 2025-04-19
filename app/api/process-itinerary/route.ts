@@ -5,7 +5,7 @@ import { generatePrompt } from '../generate-itinerary/route';
 
 // Configure runtime for serverless function - we need longer timeout here
 export const runtime = 'nodejs';
-export const maxDuration = 300; // 5 minutes - plenty for API processing
+export const maxDuration = 60; // 60 seconds (default maximum Vercel allows)
 
 // Allow the API to be dynamic
 export const dynamic = 'force-dynamic';
