@@ -4,7 +4,7 @@ An AI-powered travel itinerary generator that helps you plan your next trip.
 
 ## Deployment Trigger
 
-Deployment trigger: 2025-04-19
+Deployment trigger: 2025-04-19 18:30
 
 ## Architecture
 
