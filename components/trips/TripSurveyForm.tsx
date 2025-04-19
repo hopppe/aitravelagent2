@@ -263,6 +263,19 @@ export default function TripSurveyForm() {
         try {
           // First try direct JSON parse
           const itinerary = JSON.parse(result.rawContent);
+          
+          // Handle budgetEstimate vs. budget naming
+          if (itinerary.budgetEstimate && !itinerary.budget) {
+            itinerary.budget = itinerary.budgetEstimate;
+            console.log('Copied budgetEstimate to budget for consistency');
+          }
+          
+          // Handle transportation vs. transport naming
+          if (itinerary.budget && itinerary.budget.transportation !== undefined && itinerary.budget.transport === undefined) {
+            itinerary.budget.transport = itinerary.budget.transportation;
+            console.log('Converted transportation field to transport for consistency');
+          }
+          
           handleStoreItineraryAndNavigate(itinerary);
           return;
         } catch (jsonError) {

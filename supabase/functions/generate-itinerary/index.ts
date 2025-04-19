@@ -178,7 +178,7 @@ serve(async (req: Request) => {
           messages: [
             {
               role: 'system',
-              content: 'You are an expert travel planner. Generate a detailed travel itinerary based on the user\'s preferences. Return your response in a structured JSON format only, with no additional text, explanation, or markdown formatting. Do not wrap the JSON in code blocks. Ensure all property names use double quotes. IMPORTANT: Every activity MUST include a valid "coordinates" object with "lat" and "lng" numerical values - never omit coordinates or use empty objects. For price fields, DO NOT use $ symbols directly - use price descriptors like "Budget", "Moderate", "Expensive" or numeric values without currency symbols. ALL city names and locations with periods (like "St. Louis") must be properly escaped in JSON. Return a valid JSON object that can be parsed with JSON.parse().'
+              content: 'You are an expert travel planner. Generate a detailed travel itinerary based on the user\'s preferences. Return your response in a structured JSON format only, with no additional text, explanation, or markdown formatting. Do not wrap the JSON in code blocks. Ensure all property names use double quotes. IMPORTANT: Every activity MUST include a valid "coordinates" object with "lat" and "lng" numerical values - never omit coordinates or use empty objects. For cost fields, always use numerical values (not strings) - costs should be integers or decimals without currency symbols. ALL city names and locations with periods (like "St. Louis") must be properly escaped in JSON. Return a valid JSON object that can be parsed with JSON.parse().'
             },
             {
               role: 'user',

@@ -132,10 +132,22 @@ const JobStatusPoller: React.FC<JobStatusPollerProps> = ({
               
               // Legacy format with parsed itinerary
               onComplete(data.result);
+            } else if (data.raw_result) {
+              // Try to parse the raw_result directly
+              console.log(`[${jobId}] Job contains raw_result, attempting to parse`);
+              try {
+                // Set the raw content directly for the client to parse
+                onComplete({ rawContent: data.raw_result });
+              } catch (parseError) {
+                console.error(`[${jobId}] Failed to use raw_result:`, parseError);
+                const errMsg = 'Failed to parse job result';
+                setErrorDetails(errMsg);
+                onError(errMsg);
+              }
             } else {
               // No recognizable result format
               const errMsg = 'Completed job has no valid result format';
-              console.error(`[${jobId}] ${errMsg}`);
+              console.error(`[${jobId}] ${errMsg}`, data);
               setErrorDetails(errMsg);
               onError(errMsg);
             }

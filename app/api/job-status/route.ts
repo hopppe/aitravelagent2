@@ -98,7 +98,8 @@ export async function GET(request: Request) {
     return NextResponse.json({
       status: statusResult.status,
       result: statusResult.result,
-      error: statusResult.error
+      error: statusResult.error,
+      raw_result: statusResult.raw_result
     });
   } catch (error: any) {
     logger.error('Error in job status API:', error);

@@ -48,6 +48,8 @@ export type JobData = {
   error?: string;
   created_at?: string;
   updated_at: string;
+  raw_result?: string;
+  prompt?: string;
 };
 
 // Check if Supabase is configured properly
@@ -264,7 +266,7 @@ function handleSupabaseError(error: any): void {
 export async function updateJobStatus(
   jobId: string, 
   status: 'queued' | 'processing' | 'completed' | 'failed', 
-  data?: { result?: any; error?: string }
+  data?: { result?: any; error?: string; raw_result?: string; prompt?: string }
 ): Promise<boolean> {
   const updateTime = new Date().toISOString();
   const dbId = getDbCompatibleId(jobId);
@@ -272,25 +274,24 @@ export async function updateJobStatus(
   logger.info(`Updating job status: ${jobId} -> ${status}`, { 
     dbId, 
     hasResult: !!data?.result, 
-    hasError: !!data?.error 
+    hasError: !!data?.error,
+    hasRawResult: !!data?.raw_result,
+    hasPrompt: !!data?.prompt
   });
 
   if (shouldUseSupabase()) {
     try {
-      const updateData: any = {
+      // Build the update object
+      const updateData: Record<string, any> = {
         status,
         updated_at: updateTime
       };
       
-      if (data) {
-        if (data.result !== undefined) {
-          updateData.result = data.result;
-        }
-        
-        if (data.error !== undefined) {
-          updateData.error = data.error;
-        }
-      }
+      // Add optional data fields
+      if (data?.result !== undefined) updateData.result = data.result;
+      if (data?.error !== undefined) updateData.error = data.error;
+      if (data?.raw_result !== undefined) updateData.raw_result = data.raw_result;
+      if (data?.prompt !== undefined) updateData.prompt = data.prompt;
       
       logger.debug(`Supabase update job ${jobId} with data:`, updateData);
       
@@ -330,34 +331,64 @@ export async function updateJobStatus(
     }
   }
   
-  // Fallback to in-memory storage if Supabase is not available
-  if (!inMemoryJobs[jobId]) {
+  // Fallback to in-memory storage
+  if (inMemoryJobs[jobId]) {
+    inMemoryJobs[jobId].status = status;
+    inMemoryJobs[jobId].updated_at = updateTime;
+    
+    if (data) {
+      if (data.result !== undefined) {
+        inMemoryJobs[jobId].result = data.result;
+      }
+      
+      if (data.error !== undefined) {
+        inMemoryJobs[jobId].error = data.error;
+      }
+
+      if (data.raw_result !== undefined) {
+        inMemoryJobs[jobId].raw_result = data.raw_result;
+      }
+      
+      if (data.prompt !== undefined) {
+        inMemoryJobs[jobId].prompt = data.prompt;
+      }
+    }
+    
+    logger.info(`Updated in-memory job ${jobId} to status ${status}`);
+    return true;
+  } else {
+    // Job doesn't exist yet, create it
     inMemoryJobs[jobId] = {
       id: jobId,
       status: status,
-      updated_at: updateTime
+      updated_at: updateTime,
+      raw_result: data?.raw_result,
+      prompt: data?.prompt
     };
-  } else {
-    inMemoryJobs[jobId].status = status;
-    inMemoryJobs[jobId].updated_at = updateTime;
-  }
-  
-  if (data) {
-    if (data.result !== undefined) {
-      inMemoryJobs[jobId].result = data.result;
+    
+    if (data) {
+      if (data.result !== undefined) {
+        inMemoryJobs[jobId].result = data.result;
+      }
+      
+      if (data.error !== undefined) {
+        inMemoryJobs[jobId].error = data.error;
+      }
     }
     
-    if (data.error !== undefined) {
-      inMemoryJobs[jobId].error = data.error;
-    }
+    logger.info(`Created in-memory job ${jobId} with status ${status}`);
+    return true;
   }
-  
-  logger.info(`Updated in-memory job ${jobId} status to ${status}`);
-  return true;
 }
 
 // Get the status of a job
-export async function getJobStatus(jobId: string): Promise<{ status: string; result?: any; error?: string }> {
+export async function getJobStatus(jobId: string): Promise<{ 
+  status: string; 
+  result?: any; 
+  error?: string;
+  raw_result?: string; 
+  prompt?: string;
+}> {
   const dbId = getDbCompatibleId(jobId);
   
   logger.info(`Getting status for job: ${jobId} (db id: ${dbId})`);
@@ -373,7 +404,7 @@ export async function getJobStatus(jobId: string): Promise<{ status: string; res
       while (retries < maxRetries) {
         const { data, error } = await supabase
           .from('jobs')
-          .select('status, result, error, updated_at')
+          .select('status, result, error, updated_at, raw_result, prompt')
           .eq('id', dbId)
           .single();
         
@@ -398,7 +429,9 @@ export async function getJobStatus(jobId: string): Promise<{ status: string; res
           return {
             status: data.status,
             result: data.result,
-            error: data.error
+            error: data.error,
+            raw_result: data.raw_result,
+            prompt: data.prompt
           };
         } else {
           logger.warn(`Job ${jobId} not found in database`);
@@ -422,7 +455,9 @@ export async function getJobStatus(jobId: string): Promise<{ status: string; res
     return {
       status: inMemoryJobs[jobId].status,
       result: inMemoryJobs[jobId].result,
-      error: inMemoryJobs[jobId].error
+      error: inMemoryJobs[jobId].error,
+      raw_result: inMemoryJobs[jobId].raw_result,
+      prompt: inMemoryJobs[jobId].prompt
     };
   }
   
@@ -489,7 +524,9 @@ export async function createJob(jobId: string): Promise<boolean> {
     id: jobId,
     status: 'queued',
     created_at: timestamp,
-    updated_at: timestamp
+    updated_at: timestamp,
+    raw_result: undefined,
+    prompt: undefined
   };
   
   logger.info(`Created in-memory job ${jobId}`);

@@ -10,7 +10,7 @@ type Activity = {
   description: string;
   location: string;
   coordinates: { lat: number; lng: number };
-  cost: number;
+  cost: number | string;
   image?: string;
 };
 
@@ -78,9 +78,13 @@ export default function ItineraryCalendarView({ days }: ItineraryCalendarViewPro
   };
 
   // Render activity cost
-  const renderCost = (cost: number) => {
-    if (cost === 0) return <span className="text-green-600">Free</span>;
-    return <span>${cost}</span>;
+  const renderCost = (cost: number | string) => {
+    // Convert string costs to numbers if possible
+    const numericCost = typeof cost === 'string' 
+      ? isNaN(parseFloat(cost)) ? 0 : parseFloat(cost)
+      : cost;
+    
+    return <span className="text-primary">${numericCost.toFixed(2)}</span>;
   };
 
   // Group activities by day

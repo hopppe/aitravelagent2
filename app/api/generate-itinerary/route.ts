@@ -94,28 +94,6 @@ export async function POST(request: Request) {
     const prompt = generatePrompt(surveyData);
     logger.info(`Generated prompt for job ${jobId}, length: ${prompt.length} characters`);
 
-    // If we're in development or testing, return mock data immediately
-    if (process.env.NODE_ENV === 'development' && process.env.USE_MOCK_DATA === 'true') {
-      logger.info('Development mode with mock data: Returning mock data');
-      const mockItinerary = createMockItinerary(surveyData);
-      const updateResult = await updateJobStatus(jobId, 'completed', { 
-        result: { 
-          itinerary: mockItinerary, 
-          prompt: prompt 
-        }
-      });
-      
-      if (!updateResult) {
-        logger.error('Failed to update job status in development mode');
-        return NextResponse.json(
-          { error: 'Failed to update job status' },
-          { status: 500 }
-        );
-      }
-      
-      return NextResponse.json({ jobId, status: 'completed' });
-    }
-
     // Create a new job in Supabase
     logger.info('Creating new job with ID:', jobId);
     let jobCreated = false;
@@ -293,7 +271,7 @@ Generate a comprehensive day-by-day travel itinerary with the following structur
             "lng": <longitude as number>
           },
           "duration": "<estimated duration>",
-          "cost": "<cost estimate or budget level>"
+          "cost": <numerical cost estimate as number>
         },
         ... more activities ...
       ]
@@ -337,79 +315,4 @@ function formatDate(date: Date): string {
   else if (day === 3 || day === 23) suffix = 'rd';
   
   return `${month} ${day}${suffix}, ${year}`;
-}
-
-// Helper function to create mock data for development testing
-function createMockItinerary(surveyData: SurveyData): any {
-  return {
-    destination: surveyData.destination,
-    tripName: `${surveyData.purpose} trip to ${surveyData.destination}`,
-    dates: {
-      start: surveyData.startDate,
-      end: surveyData.endDate
-    },
-    summary: `A ${surveyData.budget} ${surveyData.purpose} adventure in ${surveyData.destination}, featuring ${surveyData.preferences.join(', ')}.`,
-    days: [
-      {
-        day: 1,
-        date: surveyData.startDate,
-        activities: [
-          {
-            time: "morning",
-            title: "Breakfast at local cafe",
-            description: "Start your day with a delicious local breakfast",
-            location: "Central Cafe",
-            coordinates: {
-              lat: 48.8566,
-              lng: 2.3522
-            },
-            duration: "1 hour",
-            cost: "moderate"
-          },
-          {
-            time: "afternoon",
-            title: "City Tour",
-            description: "Explore the main attractions of the city",
-            location: "City Center",
-            coordinates: {
-              lat: 48.8584,
-              lng: 2.3536
-            },
-            duration: "3 hours",
-            cost: surveyData.budget
-          }
-        ]
-      },
-      {
-        day: 2,
-        date: new Date(new Date(surveyData.startDate).setDate(new Date(surveyData.startDate).getDate() + 1)).toISOString().split('T')[0],
-        activities: [
-          {
-            time: "morning",
-            title: "Museum Visit",
-            description: "Visit the famous local museum",
-            location: "National Museum",
-            coordinates: {
-              lat: 48.8606,
-              lng: 2.3376
-            },
-            duration: "2 hours",
-            cost: surveyData.budget
-          }
-        ]
-      }
-    ],
-    budgetEstimate: {
-      accommodation: 500,
-      food: 300,
-      activities: 200,
-      transportation: 100,
-      total: 1100
-    },
-    travelTips: [
-      "Pack comfortable walking shoes",
-      "Try the local specialty dishes",
-      "Learn a few phrases in the local language"
-    ]
-  };
 } 

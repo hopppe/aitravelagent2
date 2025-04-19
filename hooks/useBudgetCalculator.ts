@@ -16,12 +16,14 @@ type Budget = {
   food?: number;
   activities?: number;
   transport?: number;
+  transportation?: number;
   total?: number;
 };
 
 type ItineraryWithBudget = {
   days: Day[];
   budget?: Budget;
+  budgetEstimate?: Budget;
 };
 
 /**
@@ -41,21 +43,21 @@ export function useBudgetCalculator(itinerary: ItineraryWithBudget | null) {
       };
     }
 
-    // Get budget from itinerary or create empty object
-    const budget = itinerary.budget || {};
+    // Get budget from itinerary or create empty object - check both budget and budgetEstimate
+    const budgetData = itinerary.budget || itinerary.budgetEstimate || {};
     
     // Initialize with defaults
     const normalizedBudget = {
-      accommodation: budget.accommodation || 0,
-      food: budget.food || 0,
-      transport: budget.transport || 0,
+      accommodation: budgetData.accommodation || 0,
+      food: budgetData.food || 0,
+      transport: budgetData.transport || budgetData.transportation || 0,
       activities: 0, // Will calculate from activities if not provided
       total: 0, // Will be calculated
     };
     
     // Calculate activities cost from actual activities or use provided value
-    if (budget.activities !== undefined) {
-      normalizedBudget.activities = budget.activities;
+    if (budgetData.activities !== undefined) {
+      normalizedBudget.activities = budgetData.activities;
     } else {
       // Sum up all activity costs
       let totalActivitiesCost = 0;
@@ -86,7 +88,7 @@ export function useBudgetCalculator(itinerary: ItineraryWithBudget | null) {
     
     // If budget.total is provided and is different from calculated total,
     // log a warning but use the calculated value for consistency
-    if (budget.total !== undefined && budget.total !== normalizedBudget.total) {
+    if (budgetData.total !== undefined && budgetData.total !== normalizedBudget.total) {
       console.warn('Provided budget total does not match calculated total. Using calculated total for consistency.');
     }
     

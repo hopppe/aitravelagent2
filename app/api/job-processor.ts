@@ -172,6 +172,18 @@ export async function processItineraryResponse(jobId: string, contentData: any):
         throw new Error('Parsed result is not a valid object');
       }
       
+      // Handle budgetEstimate vs budget naming
+      if (itinerary.budgetEstimate && !itinerary.budget) {
+        logger.info('Converting budgetEstimate to budget for consistency');
+        itinerary.budget = itinerary.budgetEstimate;
+      }
+      
+      // Handle transportation vs transport naming
+      if (itinerary.budget && itinerary.budget.transportation !== undefined && itinerary.budget.transport === undefined) {
+        logger.info('Converting transportation field to transport for consistency');
+        itinerary.budget.transport = itinerary.budget.transportation;
+      }
+      
       logger.debug(`Validating coordinates for job ${jobId}`);
       
       // Ensure coordinates exist for all activities
@@ -183,7 +195,8 @@ export async function processItineraryResponse(jobId: string, contentData: any):
       await updateJobStatus(jobId, 'completed', { result: { 
         itinerary,
         prompt: contentData.prompt, // Include the prompt for reference
-        generatedAt: new Date().toISOString()
+        generatedAt: new Date().toISOString(),
+        rawContent: itineraryContent // Include the raw content for the client to parse directly
       }});
       
       logger.info(`Job ${jobId} completed successfully`);
@@ -256,7 +269,7 @@ export async function processItineraryJob(
         messages: [
           {
             role: 'system',
-            content: 'You are an expert travel planner. Generate a detailed travel itinerary based on the user\'s preferences. Return your response in a structured JSON format only, with no additional text, explanation, or markdown formatting. Do not wrap the JSON in code blocks. Ensure all property names use double quotes. IMPORTANT: Every activity MUST include a valid "coordinates" object with "lat" and "lng" numerical values - never omit coordinates or use empty objects. For price fields, DO NOT use $ symbols directly - use price descriptors like "Budget", "Moderate", "Expensive" or numeric values without currency symbols.'
+            content: 'You are an expert travel planner. Generate a detailed travel itinerary based on the user\'s preferences. Return your response in a structured JSON format only, with no additional text, explanation, or markdown formatting. Do not wrap the JSON in code blocks. Ensure all property names use double quotes. IMPORTANT: Every activity MUST include a valid "coordinates" object with "lat" and "lng" numerical values - never omit coordinates or use empty objects. For cost fields, always use numerical values (not strings) - costs should be integers or decimals without currency symbols.'
           },
           {
             role: 'user',
