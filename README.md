@@ -122,6 +122,25 @@ If jobs get stuck in the "processing" state:
 2. Make sure the `jobs` table exists in your Supabase database
 3. Check that the database permissions allow read/write access to the `jobs` table
 
+## Environment Variables and Security
+
+The application uses environment variables to manage sensitive information like API keys. To set up your local environment:
+
+1. Copy `.env.example` to `.env.local`
+2. Add your API keys to `.env.local`
+3. **IMPORTANT:** Never commit `.env.local` or any files containing API keys to the repository
+
+Environment variables include:
+
+- `GOOGLE_MAPS_API_KEY` - Your Google Maps API key
+
+### Security Best Practices
+
+- API keys are only accessed on the server side through secure API routes
+- Client-side code requests data from these server routes without exposing the API keys
+- The `.next` build directory is not committed to version control to prevent leaking secrets
+- Environment files with real API keys (`.env.local`, `.env.development.local`, etc.) are excluded from Git
+
 ## License
 
 MIT 

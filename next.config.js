@@ -14,6 +14,36 @@ const nextConfig = {
       bodySizeLimit: '2mb',
     },
   },
+  serverRuntimeConfig: {
+    // Will only be available on the server side
+    googleMapsApiKey: process.env.GOOGLE_MAPS_API_KEY,
+  },
+  publicRuntimeConfig: {
+    // Will be available on both server and client
+    // Don't put sensitive data here
+  },
+  // Additional security headers
+  async headers() {
+    return [
+      {
+        source: '/(.*)',
+        headers: [
+          {
+            key: 'X-Content-Type-Options',
+            value: 'nosniff',
+          },
+          {
+            key: 'X-Frame-Options',
+            value: 'DENY',
+          },
+          {
+            key: 'X-XSS-Protection',
+            value: '1; mode=block',
+          },
+        ],
+      },
+    ];
+  },
 };
 
 module.exports = nextConfig; 

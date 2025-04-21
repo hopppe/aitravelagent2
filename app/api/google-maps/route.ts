@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { getServerConfig } from '../../../utils/config';
 
 /**
  * API route that generates a Google Maps URL with the API key from the server
@@ -6,10 +7,10 @@ import { NextResponse } from 'next/server';
  */
 export async function GET() {
   try {
-    // Get the API key from server-side environment variables
-    const apiKey = process.env.GOOGLE_MAPS_API_KEY;
+    // Get the API key from server-side configuration
+    const { googleMapsApiKey } = getServerConfig();
     
-    if (!apiKey) {
+    if (!googleMapsApiKey) {
       return NextResponse.json(
         { error: 'Google Maps API key is not configured on the server' },
         { status: 500 }
@@ -17,7 +18,7 @@ export async function GET() {
     }
     
     // Return the Google Maps API URL with the key
-    const mapsUrl = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places`;
+    const mapsUrl = `https://maps.googleapis.com/maps/api/js?key=${googleMapsApiKey}&libraries=places`;
     
     return NextResponse.json({ url: mapsUrl });
   } catch (error) {

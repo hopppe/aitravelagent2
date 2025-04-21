@@ -2,7 +2,11 @@
 /node_modules
 
 # Environment variables
-.env*
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
 
 # Logs
 npm-debug.log*
@@ -17,4 +21,16 @@ yarn-error.log*
 /dist/
 
 # OS generated files
-.DS_Store 
+.DS_Store
+
+# Debugging
+*.log
+
+# IDE files
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Testing
+/coverage 
