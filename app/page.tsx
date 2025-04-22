@@ -1,6 +1,8 @@
 import Link from 'next/link';
-import { FaPlus, FaSuitcase } from 'react-icons/fa';
+import { FaPlus, FaSuitcase, FaCompass } from 'react-icons/fa';
 import TripList from '../components/trips/TripList';
+import SampleTrips from '../components/trips/SampleTrips';
+import AuthAwareLink from '../components/auth/AuthAwareLink';
 
 export default function Home() {
   return (
@@ -25,15 +27,32 @@ export default function Home() {
             <FaSuitcase />
             <span>Your Trips</span>
           </h2>
+          <AuthAwareLink 
+            href="/trips"
+            fallbackHref="/auth"
+            className="text-primary hover:text-accent transition-colors"
+            label="View All"
+          />
+        </div>
+        
+        <TripList redirectIfUnauthenticated={false} />
+      </section>
+      
+      <section>
+        <div className="flex items-center justify-between mb-6">
+          <h2 className="text-2xl font-bold flex items-center gap-2">
+            <FaCompass />
+            <span>Sample Trips</span>
+          </h2>
           <Link 
             href="/trips/new"
             className="text-primary hover:text-accent transition-colors"
           >
-            View All
+            Create Your Own
           </Link>
         </div>
         
-        <TripList />
+        <SampleTrips />
       </section>
     </div>
   );

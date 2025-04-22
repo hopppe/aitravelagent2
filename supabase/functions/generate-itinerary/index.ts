@@ -5,7 +5,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.7.1';
 
 // Configure the timeout for this edge function
 export const config = {
-  timeout: 60  // 60 seconds timeout (maximum allowed)
+  timeout: 60  // Keep at 60 seconds for better reliability
 };
 
 // Types
@@ -80,6 +80,9 @@ function parseJobId(fullJobId: string): { dbId: string | null, fullId: string } 
 
 // Main handler for Edge Function
 serve(async (req: Request) => {
+  const startTime = Date.now();
+  let currentPhase = 'initializing';
+
   try {
     // Only accept POST requests
     if (req.method !== 'POST') {
@@ -90,13 +93,15 @@ serve(async (req: Request) => {
     }
 
     // Parse request body
+    currentPhase = 'parsing request';
     const data = await req.json();
     const { jobId, surveyData, prompt } = data;
 
     log(`Edge Function received request for job: ${jobId}`, {
       hasPrompt: !!prompt,
       promptLength: prompt?.length || 0,
-      hasSurveyData: !!surveyData
+      hasSurveyData: !!surveyData,
+      timeElapsed: `${Date.now() - startTime}ms`
     });
 
     // Validate required data
@@ -118,25 +123,6 @@ serve(async (req: Request) => {
     
     log(`Parsed job ID: Full=${fullId}, DB ID=${dbId}`);
 
-    // Test Supabase connection at the beginning
-    try {
-      log(`Testing Supabase connection...`);
-      const { data: testData, error: testError } = await supabaseClient.from('jobs').select('id').limit(1);
-      
-      if (testError) {
-        log(`❌ Supabase connection test failed:`, testError);
-        throw new Error(`Supabase connection failed: ${testError.message}`);
-      }
-      
-      log(`✅ Supabase connection test successful`, { count: testData?.length || 0 });
-    } catch (connError: any) {
-      log(`❌ Supabase connection test exception:`, connError);
-      return new Response(
-        JSON.stringify({ error: `Database connection error: ${connError.message}` }),
-        { status: 500, headers: { 'Content-Type': 'application/json' } }
-      );
-    }
-
     // Validate OpenAI API key
     if (!OPENAI_API_KEY || !OPENAI_API_KEY.startsWith('sk-')) {
       log(`❌ Invalid OpenAI API key configuration`);
@@ -148,6 +134,7 @@ serve(async (req: Request) => {
 
     try {
       // Update job status to processing and store the prompt
+      currentPhase = 'updating job to processing';
       log(`Updating job status to processing for job ${jobId} (DB ID: ${dbId})`);
       const { error: updateError } = await supabaseClient
         .from('jobs')
@@ -163,97 +150,111 @@ serve(async (req: Request) => {
         throw new Error(`Failed to update job status: ${updateError.message}`);
       }
       
-      log(`Job status updated to processing successfully`);
+      log(`Job status updated to processing successfully, time elapsed: ${Date.now() - startTime}ms`);
       
       // Call OpenAI API using the prompt provided by the web app
+      currentPhase = 'calling OpenAI API';
       log(`Calling OpenAI API for job ${jobId} with prompt length: ${prompt.length}`);
-      const response = await fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${OPENAI_API_KEY}`,
-        },
-        body: JSON.stringify({
-          model: 'gpt-3.5-turbo',
-          messages: [
-            {
-              role: 'system',
-              content: 'You are an expert travel planner. Generate a detailed travel itinerary based on the user\'s preferences. Return your response in a structured JSON format only, with no additional text, explanation, or markdown formatting. Do not wrap the JSON in code blocks. Ensure all property names use double quotes. IMPORTANT: Every activity MUST include a valid "coordinates" object with "lat" and "lng" numerical values - never omit coordinates or use empty objects. For cost fields, always use numerical values (not strings) - costs should be integers or decimals without currency symbols. ALL city names and locations with periods (like "St. Louis") must be properly escaped in JSON. Return a valid JSON object that can be parsed with JSON.parse().'
-            },
-            {
-              role: 'user',
-              content: prompt
-            }
-          ],
-          temperature: 0.7,
-          max_tokens: 3000,
-        }),
-      });
 
-      if (!response.ok) {
-        const error = await response.json();
-        log(`❌ OpenAI API error:`, error);
-        throw new Error(`OpenAI API error: ${error.error?.message || 'Unknown error'}`);
-      }
-
-      log(`✅ OpenAI API responded successfully`);
-      const openAIData = await response.json();
-      const rawContent = openAIData.choices[0].message.content;
-      log(`Received content from OpenAI, length: ${rawContent.length} characters`);
+      // Set a reasonable timeout for the OpenAI call
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 50000); // 50 second timeout
       
-      // Update job status to completed with the raw result in a separate column
-      log(`Updating job status to completed for job ${jobId} (DB ID: ${dbId})`);
-      const { error: completeError } = await supabaseClient
-        .from('jobs')
-        .update({
-          status: 'completed',
-          raw_result: rawContent,  // Store the raw result in its own column
-          result: { 
-            usage: openAIData.usage,
-            processed: true
+      try {
+        const response = await fetch('https://api.openai.com/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${OPENAI_API_KEY}`,
           },
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', dbId);
+          body: JSON.stringify({
+            model: 'gpt-3.5-turbo-16k',
+            messages: [
+              {
+                role: 'system',
+                content: 'You are an expert travel planner. Generate a detailed travel itinerary based on the user\'s preferences. Return your response in a structured JSON format only, with no additional text, explanation, or markdown formatting. Do not wrap the JSON in code blocks. Ensure all property names use double quotes. IMPORTANT: Every activity MUST include a valid "coordinates" object with "lat" and "lng" numerical values - never omit coordinates or use empty objects. For cost fields, always use numerical values (not strings) - costs should be integers or decimals without currency symbols.'
+              },
+              {
+                role: 'user',
+                content: prompt
+              }
+            ],
+            temperature: 0.7,
+            max_tokens: 8000,
+          }),
+          signal: controller.signal
+        });
+        
+        // Clear the timeout since the request completed
+        clearTimeout(timeoutId);
+        
+        if (!response.ok) {
+          const error = await response.json();
+          log(`❌ OpenAI API error:`, error);
+          throw new Error(`OpenAI API error: ${error.error?.message || 'Unknown error'}`);
+        }
 
-      if (completeError) {
-        log(`❌ Error updating job status to completed:`, completeError);
-        throw new Error(`Failed to update job to completed: ${completeError.message}`);
+        log(`✅ OpenAI API responded successfully, time elapsed: ${Date.now() - startTime}ms`);
+        const openAIData = await response.json();
+        const rawContent = openAIData.choices[0].message.content;
+        log(`Received content from OpenAI, length: ${rawContent.length} characters`);
+        
+        // Update job status to completed with the raw result in a separate column
+        currentPhase = 'updating job to completed';
+        log(`Updating job status to completed for job ${jobId} (DB ID: ${dbId})`);
+
+        // Store the raw result directly without size checking
+        const { error: completeError } = await supabaseClient
+          .from('jobs')
+          .update({
+            status: 'completed',
+            raw_result: rawContent,
+            result: { 
+              usage: openAIData.usage,
+              processed: true
+            },
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', dbId);
+
+        if (completeError) {
+          log(`❌ Error updating job status to completed:`, completeError);
+          throw new Error(`Failed to update job to completed: ${completeError.message}`);
+        }
+        
+        log(`✅ Job ${jobId} marked as completed successfully, total time: ${Date.now() - startTime}ms`);
+
+        return new Response(
+          JSON.stringify({ 
+            success: true, 
+            jobId,
+            message: "Job completed successfully and status updated to completed"
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } }
+        );
+      } catch (fetchError: any) {
+        // Clear the timeout if we hit another error
+        clearTimeout(timeoutId);
+        
+        // Special handling for timeout errors
+        if (fetchError.name === 'AbortError') {
+          log(`❌ OpenAI API call timed out after 50 seconds`);
+          throw new Error('OpenAI API call timed out. Try again with a shorter prompt or simpler request.');
+        }
+        
+        throw fetchError;
       }
-      
-      log(`✅ Job ${jobId} marked as completed successfully`);
-
-      // Verify the job was updated correctly
-      const { data: verification, error: verificationError } = await supabaseClient
-        .from('jobs')
-        .select('status, updated_at, prompt, raw_result')
-        .eq('id', dbId)
-        .single();
-      
-      if (verificationError) {
-        log(`⚠️ Verification query failed:`, verificationError);
-      } else {
-        log(`✅ Verification successful - job status is:`, verification);
-      }
-
-      return new Response(
-        JSON.stringify({ 
-          success: true, 
-          jobId,
-          message: "Job completed successfully and status updated to completed"
-        }),
-        { status: 200, headers: { 'Content-Type': 'application/json' } }
-      );
     } catch (error: any) {
       // Update job status to failed
-      log(`❌ Processing error:`, error);
+      currentPhase = 'handling error';
+      log(`❌ Processing error (${currentPhase}):`, error);
       
       try {
         const { error: failedUpdateError } = await supabaseClient
           .from('jobs')
           .update({
             status: 'failed',
-            error: error.message || 'Unknown error',
+            error: `Error during ${currentPhase}: ${error.message || 'Unknown error'}`,
             updated_at: new Date().toISOString()
           })
           .eq('id', dbId);
@@ -270,10 +271,12 @@ serve(async (req: Request) => {
       throw error;
     }
   } catch (error: any) {
-    log(`❌ Unhandled exception in Edge Function:`, error);
+    log(`❌ Unhandled exception in Edge Function (${currentPhase}), time elapsed: ${Date.now() - startTime}ms:`, error);
     return new Response(
       JSON.stringify({
-        error: `Failed to generate itinerary: ${error.message || 'Unknown error'}`,
+        error: `Failed to generate itinerary during ${currentPhase}: ${error.message || 'Unknown error'}`,
+        phase: currentPhase,
+        timeElapsed: `${Date.now() - startTime}ms`
       }),
       { status: 500, headers: { 'Content-Type': 'application/json' } }
     );

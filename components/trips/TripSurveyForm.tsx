@@ -61,9 +61,6 @@ export default function TripSurveyForm() {
   // Add error details state
   const [errorDetails, setErrorDetails] = useState<string | null>(null);
 
-  // Add testing connection state
-  const [isTestingConnection, setIsTestingConnection] = useState<boolean>(false);
-
   // Handle text input changes
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
@@ -116,39 +113,10 @@ export default function TripSurveyForm() {
     }
   };
 
-  // Test the job system connection
-  const testJobSystem = async () => {
-    try {
-      setIsTestingConnection(true);
-      setError(null);
-      setErrorDetails(null);
-      
-      const response = await fetch('/api/test-job');
-      const data = await response.json();
-      
-      if (!response.ok || !data.success) {
-        throw new Error(data.error || 'Connection test failed');
-      }
-      
-      console.log('Job system test successful:', data);
-      return true;
-    } catch (err) {
-      console.error('Job system test failed:', err);
-      return false;
-    } finally {
-      setIsTestingConnection(false);
-    }
-  };
-
   // Submit the form
   const handleSubmit = async () => {
     try {
-      // Test connection first
-      const connectionOk = await testJobSystem();
-      if (!connectionOk) {
-        throw new Error('Job system connection test failed. Please check your Supabase configuration.');
-      }
-      
+      // Remove the test connection step that creates test jobs
       setIsGenerating(true);
       setError(null);
       setErrorDetails(null);

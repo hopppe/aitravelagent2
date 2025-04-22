@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import './globals.css';
 import { Navbar } from '../components/layout/Navbar';
 import dynamic from 'next/dynamic';
+import { AuthProvider } from '../hooks/useAuth';
 
 // Import ErrorBoundary dynamically to avoid SSR issues
 const ErrorBoundary = dynamic(
@@ -22,12 +23,14 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className="min-h-screen bg-light">
-        <Navbar />
-        <main className="container mx-auto px-4 py-8">
-          <ErrorBoundary>
-            {children}
-          </ErrorBoundary>
-        </main>
+        <AuthProvider>
+          <Navbar />
+          <main className="container mx-auto px-4 py-8">
+            <ErrorBoundary>
+              {children}
+            </ErrorBoundary>
+          </main>
+        </AuthProvider>
       </body>
     </html>
   );

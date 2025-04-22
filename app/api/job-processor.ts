@@ -124,7 +124,7 @@ export async function processItineraryResponse(jobId: string, contentData: any):
       return false;
     }
     
-    const itineraryContent = contentData.rawContent;
+    let itineraryContent = contentData.rawContent;
     logger.debug(`Content length for job ${jobId}: ${itineraryContent.length} characters`);
     
     // Parse the JSON response with error handling
@@ -151,9 +151,9 @@ export async function processItineraryResponse(jobId: string, contentData: any):
             const extractError = err2 as Error;
             logger.error(`Failed to extract valid JSON for job ${jobId}:`, extractError.message);
             
-            // Try to sanitize and repair the JSON
+            // Try to sanitize the JSON
             try {
-              logger.debug(`Attempting to sanitize and repair the JSON for job ${jobId}`);
+              logger.debug(`Attempting to sanitize the JSON for job ${jobId}`);
               const sanitizedJSON = sanitizeJSON(itineraryContent);
               
               itinerary = JSON.parse(sanitizedJSON);
@@ -265,7 +265,7 @@ export async function processItineraryJob(
         'Authorization': `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
-        model: 'gpt-3.5-turbo',
+        model: 'gpt-3.5-turbo-16k',
         messages: [
           {
             role: 'system',
@@ -277,7 +277,8 @@ export async function processItineraryJob(
           }
         ],
         temperature: 0.7,
-        max_tokens: 3000,
+        max_tokens: 8000,
+        response_format: { type: 'json_object' },
       }),
     });
 

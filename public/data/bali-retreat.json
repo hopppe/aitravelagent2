@@ -1,0 +1,251 @@
+{
+  "destination": "Bali",
+  "tripName": "Bali Bliss Retreat",
+  "dates": {
+    "start": "2025-04-23",
+    "end": "2025-04-28"
+  },
+  "summary": "Experience the serene beauty of Bali with a focus on relaxation and culinary delights. Visit stunning beaches, indulge in local cuisine, and unwind in luxurious settings.",
+  "days": [
+    {
+      "day": 1,
+      "date": "2025-04-23",
+      "activities": [
+        {
+          "time": "afternoon",
+          "title": "Check-in at Hotel",
+          "description": "Arrive and check in at your accommodation in Seminyak, a vibrant beach town known for its upscale beach resorts and lively atmosphere.",
+          "location": "Hotel Indigo Bali Seminyak Beach",
+          "coordinates": {
+            "lat": -8.6909,
+            "lng": 115.1689
+          },
+          "duration": "1 hour",
+          "cost": 0
+        },
+        {
+          "time": "evening",
+          "title": "Dinner at La Lucciola",
+          "description": "Enjoy a beachfront dining experience at La Lucciola, known for its delicious Italian cuisine and stunning sunset views.",
+          "location": "La Lucciola",
+          "coordinates": {
+            "lat": -8.6878,
+            "lng": 115.1617
+          },
+          "duration": "2 hours",
+          "cost": 50
+        }
+      ]
+    },
+    {
+      "day": 2,
+      "date": "2025-04-24",
+      "activities": [
+        {
+          "time": "morning",
+          "title": "Relax at Seminyak Beach",
+          "description": "Start your day with a relaxing morning at Seminyak Beach, enjoying the sun and the sound of the waves.",
+          "location": "Seminyak Beach",
+          "coordinates": {
+            "lat": -8.6909,
+            "lng": 115.1675
+          },
+          "duration": "3 hours",
+          "cost": 0
+        },
+        {
+          "time": "afternoon",
+          "title": "Lunch at Warung Nia",
+          "description": "Savor authentic Balinese flavors at Warung Nia, a popular spot for traditional dishes served in a cozy setting.",
+          "location": "Warung Nia",
+          "coordinates": {
+            "lat": -8.6838,
+            "lng": 115.1614
+          },
+          "duration": "1.5 hours",
+          "cost": 20
+        },
+        {
+          "time": "evening",
+          "title": "Spa Treatment",
+          "description": "Unwind with a relaxing spa treatment at Prana Spa, offering a range of traditional Balinese massages and therapies.",
+          "location": "Prana Spa Bali",
+          "coordinates": {
+            "lat": -8.6903,
+            "lng": 115.1672
+          },
+          "duration": "2 hours",
+          "cost": 70
+        }
+      ]
+    },
+    {
+      "day": 3,
+      "date": "2025-04-25",
+      "activities": [
+        {
+          "time": "morning",
+          "title": "Explore Ubud's Rice Terraces",
+          "description": "Take a day trip to Ubud and explore the iconic Tegalalang Rice Terraces, renowned for their stunning scenery.",
+          "location": "Tegalalang Rice Terraces",
+          "coordinates": {
+            "lat": -8.4358,
+            "lng": 115.2799
+          },
+          "duration": "3 hours",
+          "cost": 10
+        },
+        {
+          "time": "afternoon",
+          "title": "Lunch at Bebek Bengil",
+          "description": "Dine at Bebek Bengil, famous for its crispy duck and scenic views of Ubud's lush landscapes.",
+          "location": "Bebek Bengil",
+          "coordinates": {
+            "lat": -8.5195,
+            "lng": 115.2634
+          },
+          "duration": "1.5 hours",
+          "cost": 30
+        },
+        {
+          "time": "evening",
+          "title": "Visit Ubud Art Market",
+          "description": "Stroll through the Ubud Art Market to shop for local crafts, souvenirs, and artwork.",
+          "location": "Ubud Art Market",
+          "coordinates": {
+            "lat": -8.5076,
+            "lng": 115.2631
+          },
+          "duration": "1.5 hours",
+          "cost": 0
+        }
+      ]
+    },
+    {
+      "day": 4,
+      "date": "2025-04-26",
+      "activities": [
+        {
+          "time": "morning",
+          "title": "Yoga Session",
+          "description": "Begin your day with a rejuvenating yoga session at The Yoga Barn, a tranquil oasis in the heart of Ubud.",
+          "location": "The Yoga Barn",
+          "coordinates": {
+            "lat": -8.5192,
+            "lng": 115.2653
+          },
+          "duration": "1.5 hours",
+          "cost": 15
+        },
+        {
+          "time": "afternoon",
+          "title": "Lunch at Locavore",
+          "description": "Experience a culinary adventure at Locavore, a renowned restaurant serving innovative dishes made from local ingredients.",
+          "location": "Locavore",
+          "coordinates": {
+            "lat": -8.5086,
+            "lng": 115.2655
+          },
+          "duration": "2 hours",
+          "cost": 60
+        },
+        {
+          "time": "evening",
+          "title": "Sunset at Tanah Lot",
+          "description": "Visit Tanah Lot Temple to witness a breathtaking sunset over the ocean, one of Bali's most iconic views.",
+          "location": "Tanah Lot Temple",
+          "coordinates": {
+            "lat": -8.6210,
+            "lng": 115.0863
+          },
+          "duration": "2 hours",
+          "cost": 10
+        }
+      ]
+    },
+    {
+      "day": 5,
+      "date": "2025-04-27",
+      "activities": [
+        {
+          "time": "morning",
+          "title": "Nusa Dua Beach Day",
+          "description": "Spend a leisurely day at Nusa Dua Beach, known for its crystal-clear waters and pristine sands.",
+          "location": "Nusa Dua Beach",
+          "coordinates": {
+            "lat": -8.8082,
+            "lng": 115.2254
+          },
+          "duration": "4 hours",
+          "cost": 0
+        },
+        {
+          "time": "afternoon",
+          "title": "Lunch at Bumbu Bali",
+          "description": "Enjoy a traditional Balinese meal at Bumbu Bali, a restaurant famed for its authentic flavors and cooking classes.",
+          "location": "Bumbu Bali",
+          "coordinates": {
+            "lat": -8.7879,
+            "lng": 115.2272
+          },
+          "duration": "1.5 hours",
+          "cost": 25
+        },
+        {
+          "time": "evening",
+          "title": "Dinner at Jimbaran Bay",
+          "description": "Conclude your day with a seafood dinner on the beach at Jimbaran Bay, where you can dine under the stars.",
+          "location": "Jimbaran Bay",
+          "coordinates": {
+            "lat": -8.7782,
+            "lng": 115.1611
+          },
+          "duration": "2 hours",
+          "cost": 45
+        }
+      ]
+    },
+    {
+      "day": 6,
+      "date": "2025-04-28",
+      "activities": [
+        {
+          "time": "morning",
+          "title": "Shopping at Seminyak Village",
+          "description": "Spend your final morning shopping at Seminyak Village, a chic shopping center with a variety of local and international brands.",
+          "location": "Seminyak Village",
+          "coordinates": {
+            "lat": -8.6828,
+            "lng": 115.1595
+          },
+          "duration": "2 hours",
+          "cost": 0
+        },
+        {
+          "time": "afternoon",
+          "title": "Check-out and Departure",
+          "description": "Check out of your hotel and prepare for departure. Reflect on your relaxing and delightful stay in Bali.",
+          "location": "Hotel Indigo Bali Seminyak Beach",
+          "coordinates": {
+            "lat": -8.6909,
+            "lng": 115.1689
+          },
+          "duration": "1 hour",
+          "cost": 0
+        }
+      ]
+    }
+  ],
+  "budget": {
+    "accommodation": 700,
+    "food": 350,
+    "activities": 250,
+    "transport": 150,
+    "total": 1450
+  },
+  "travelTips": [
+    "Carry cash for small purchases and local markets.",
+    "Respect local customs and dress modestly at temples.",
+    "Try to learn a few basic phrases in Bahasa Indonesia."
+  ]
+} 

@@ -9,6 +9,33 @@ dotenv.config({ path: '.env.local' });
 // Use the API key from environment variables
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 
+// Helper function to sanitize JSON
+function sanitizeJSON(json) {
+  console.log('Sanitizing JSON...');
+  
+  // Remove JavaScript-style comments
+  let sanitized = json.replace(/\/\/.*?(\r?\n|$)/g, '$1') // Remove line comments
+                      .replace(/\/\*[\s\S]*?\*\//g, ''); // Remove block comments
+                      
+  // Fix missing/unquoted property names
+  sanitized = sanitized.replace(/(\{|\,)\s*([a-zA-Z0-9_]+)\s*\:/g, '$1"$2":');
+  
+  // Remove trailing commas in arrays and objects
+  sanitized = sanitized.replace(/,(\s*[\]\}])/g, '$1');
+  
+  // Replace single quotes with double quotes (but careful with escaped quotes)
+  // First, temporarily replace escaped single quotes
+  sanitized = sanitized.replace(/\\'/g, "___ESCAPED_SINGLE_QUOTE___");
+  
+  // Then replace regular single quotes with double quotes
+  sanitized = sanitized.replace(/'/g, '"');
+  
+  // Finally, restore escaped single quotes
+  sanitized = sanitized.replace(/___ESCAPED_SINGLE_QUOTE___/g, "\\'");
+  
+  return sanitized;
+}
+
 // Simplified test data
 const testData = {
   destination: 'Paris, France',
@@ -62,36 +89,9 @@ Return this as a JSON object with the following structure:
 }
 `;
 
-// Helper function to repair common JSON issues (same as in the API route)
-function repairJSON(json) {
-  console.log('Repairing JSON...');
-  
-  // Remove JavaScript-style comments (both line and block comments)
-  let repaired = json.replace(/\/\/.*?(\r?\n|$)/g, '$1') // Remove line comments
-                     .replace(/\/\*[\s\S]*?\*\//g, ''); // Remove block comments
-                     
-  // Fix missing/unquoted property names
-  repaired = repaired.replace(/(\{|\,)\s*([a-zA-Z0-9_]+)\s*\:/g, '$1"$2":');
-  
-  // Remove trailing commas in arrays and objects
-  repaired = repaired.replace(/,(\s*[\]\}])/g, '$1');
-  
-  // Replace single quotes with double quotes (but careful with escaped quotes)
-  // First, temporarily replace escaped single quotes
-  repaired = repaired.replace(/\\'/g, "___ESCAPED_SINGLE_QUOTE___");
-  
-  // Then replace regular single quotes with double quotes
-  repaired = repaired.replace(/'/g, '"');
-  
-  // Finally, restore escaped single quotes
-  repaired = repaired.replace(/___ESCAPED_SINGLE_QUOTE___/g, "\\'");
-  
-  return repaired;
-}
-
 // Prepare data for OpenAI API request
 const data = JSON.stringify({
-  model: 'gpt-3.5-turbo',
+  model: 'gpt-3.5-turbo-16k',
   messages: [
     {
       role: 'system',
@@ -103,7 +103,7 @@ const data = JSON.stringify({
     }
   ],
   temperature: 0.7,
-  max_tokens: 3000,
+  max_tokens: 8000,
 });
 
 // Options for the HTTPS request
@@ -172,33 +172,26 @@ const req = https.request(options, res => {
         } catch (parseError) {
           console.error('\nFailed to parse content as JSON:', parseError.message);
           
-          // Try to repair the JSON
-          console.log('\nAttempting to repair JSON...');
-          const repairedContent = repairJSON(content);
+          // Try to sanitize JSON
+          console.log('\nAttempting to sanitize JSON...');
+          const sanitizedContent = sanitizeJSON(content);
           
           try {
-            // Try to parse the repaired JSON
-            const parsedRepairedItinerary = JSON.parse(repairedContent);
-            console.log('\nSuccessfully parsed REPAIRED JSON');
-            console.log('Top-level keys:', Object.keys(parsedRepairedItinerary).join(', '));
+            // Try to parse the sanitized JSON
+            const parsedSanitizedItinerary = JSON.parse(sanitizedContent);
+            console.log('\nSuccessfully parsed SANITIZED JSON');
+            console.log('Top-level keys:', Object.keys(parsedSanitizedItinerary).join(', '));
             
-            // Validate days structure
-            if (parsedRepairedItinerary.days && Array.isArray(parsedRepairedItinerary.days)) {
-              console.log(`Itinerary contains ${parsedRepairedItinerary.days.length} days`);
-              
-              // Write repaired JSON to file
-              fs.writeFileSync('api-test-repaired.json', JSON.stringify(parsedRepairedItinerary, null, 2));
-              console.log('\nRepaired JSON saved to api-test-repaired.json');
-            } else {
-              console.error('\nMissing or invalid days array in repaired itinerary');
-            }
-          } catch (repairError) {
-            console.error('\nFailed to parse even after repair attempt:', repairError.message);
+            // Write sanitized JSON to file
+            fs.writeFileSync('api-test-sanitized.json', JSON.stringify(parsedSanitizedItinerary, null, 2));
+            console.log('\nSanitized JSON saved to api-test-sanitized.json');
+          } catch (sanitizeError) {
+            console.error('\nFailed to parse even after sanitization:', sanitizeError.message);
             // Save raw content to file for inspection
             fs.writeFileSync('api-test-raw.txt', content);
             console.log('Raw content saved to api-test-raw.txt');
-            fs.writeFileSync('api-test-repair-attempt.txt', repairedContent);
-            console.log('Repair attempt saved to api-test-repair-attempt.txt');
+            fs.writeFileSync('api-test-sanitized.txt', sanitizedContent);
+            console.log('Sanitized attempt saved to api-test-sanitized.txt');
           }
         }
       } else {

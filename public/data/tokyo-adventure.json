@@ -1,0 +1,473 @@
+{
+    "destination": "Tokyo",
+    "tripName": "Tokyo Adventure and Culture Quest",
+    "dates": {
+      "start": "2025-04-23",
+      "end": "2025-05-05"
+    },
+    "summary": "Explore the vibrant city of Tokyo, experiencing its rich cultural heritage and thrilling adventures. Visit iconic landmarks, traditional neighborhoods, and indulge in authentic Japanese experiences.",
+    "days": [
+      {
+        "day": 1,
+        "date": "2025-04-23",
+        "activities": [
+          {
+            "time": "afternoon",
+            "title": "Arrival and Check-in",
+            "description": "Arrive at Tokyo and check in at the hotel to relax and prepare for the upcoming adventure.",
+            "location": "Hotel in Shinjuku",
+            "coordinates": {
+              "lat": 35.6895,
+              "lng": 139.6917
+            },
+            "duration": "2 hours",
+            "cost": 0
+          },
+          {
+            "time": "evening",
+            "title": "Shinjuku Night Walk",
+            "description": "Explore the bustling streets of Shinjuku, famous for its vibrant nightlife and neon lights.",
+            "location": "Shinjuku",
+            "coordinates": {
+              "lat": 35.6938,
+              "lng": 139.7034
+            },
+            "duration": "3 hours",
+            "cost": 0
+          }
+        ]
+      },
+      {
+        "day": 2,
+        "date": "2025-04-24",
+        "activities": [
+          {
+            "time": "morning",
+            "title": "Visit Meiji Shrine",
+            "description": "Discover the serene Meiji Shrine, a Shinto shrine dedicated to the spirits of Emperor Meiji and Empress Shoken.",
+            "location": "Meiji Shrine",
+            "coordinates": {
+              "lat": 35.6764,
+              "lng": 139.6993
+            },
+            "duration": "2.5 hours",
+            "cost": 0
+          },
+          {
+            "time": "afternoon",
+            "title": "Harajuku Fashion Walk",
+            "description": "Stroll through Harajuku, a district known for its trendy shops and unique street fashion.",
+            "location": "Harajuku",
+            "coordinates": {
+              "lat": 35.6704,
+              "lng": 139.7020
+            },
+            "duration": "3 hours",
+            "cost": 0
+          },
+          {
+            "time": "evening",
+            "title": "Dinner at Izakaya",
+            "description": "Enjoy a traditional Japanese dinner at a local izakaya, experiencing the authentic flavors of Tokyo.",
+            "location": "Izakaya in Shinjuku",
+            "coordinates": {
+              "lat": 35.6940,
+              "lng": 139.7010
+            },
+            "duration": "2 hours",
+            "cost": 40
+          }
+        ]
+      },
+      {
+        "day": 3,
+        "date": "2025-04-25",
+        "activities": [
+          {
+            "time": "morning",
+            "title": "Tokyo Skytree Visit",
+            "description": "Visit Tokyo Skytree, the tallest structure in Japan, for a breathtaking view of the city.",
+            "location": "Tokyo Skytree",
+            "coordinates": {
+              "lat": 35.7100,
+              "lng": 139.8107
+            },
+            "duration": "2 hours",
+            "cost": 20
+          },
+          {
+            "time": "afternoon",
+            "title": "Asakusa and Senso-ji Temple",
+            "description": "Explore Asakusa and visit Senso-ji, Tokyo's oldest temple, known for its beautiful architecture and historical significance.",
+            "location": "Senso-ji Temple",
+            "coordinates": {
+              "lat": 35.7148,
+              "lng": 139.7967
+            },
+            "duration": "3 hours",
+            "cost": 0
+          },
+          {
+            "time": "evening",
+            "title": "River Cruise on Sumida River",
+            "description": "Enjoy a relaxing evening cruise on the Sumida River, taking in the city lights from the water.",
+            "location": "Sumida River",
+            "coordinates": {
+              "lat": 35.7104,
+              "lng": 139.8059
+            },
+            "duration": "1.5 hours",
+            "cost": 30
+          }
+        ]
+      },
+      {
+        "day": 4,
+        "date": "2025-04-26",
+        "activities": [
+          {
+            "time": "morning",
+            "title": "Tsukiji Outer Market Tour",
+            "description": "Visit the Tsukiji Outer Market to explore its vibrant seafood and food stalls.",
+            "location": "Tsukiji Outer Market",
+            "coordinates": {
+              "lat": 35.6655,
+              "lng": 139.7703
+            },
+            "duration": "2 hours",
+            "cost": 0
+          },
+          {
+            "time": "afternoon",
+            "title": "Ginza Shopping",
+            "description": "Experience the upscale shopping district of Ginza, famous for its luxury retailers and fine dining.",
+            "location": "Ginza",
+            "coordinates": {
+              "lat": 35.6717,
+              "lng": 139.7649
+            },
+            "duration": "3 hours",
+            "cost": 0
+          },
+          {
+            "time": "evening",
+            "title": "Kabuki Performance",
+            "description": "Attend a traditional Kabuki performance at the Kabukiza Theatre, a classic form of Japanese drama.",
+            "location": "Kabukiza Theatre",
+            "coordinates": {
+              "lat": 35.6691,
+              "lng": 139.7634
+            },
+            "duration": "2 hours",
+            "cost": 50
+          }
+        ]
+      },
+      {
+        "day": 5,
+        "date": "2025-04-27",
+        "activities": [
+          {
+            "time": "full day",
+            "title": "Day Trip to Mount Fuji",
+            "description": "Take a day trip to the iconic Mount Fuji, enjoying hiking and the natural beauty of the area.",
+            "location": "Mount Fuji",
+            "coordinates": {
+              "lat": 35.3606,
+              "lng": 138.7274
+            },
+            "duration": "8 hours",
+            "cost": 100
+          }
+        ]
+      },
+      {
+        "day": 6,
+        "date": "2025-04-28",
+        "activities": [
+          {
+            "time": "morning",
+            "title": "Akihabara Electric Town",
+            "description": "Explore Akihabara, famous for its electronics shops, anime, and otaku culture.",
+            "location": "Akihabara",
+            "coordinates": {
+              "lat": 35.6984,
+              "lng": 139.7730
+            },
+            "duration": "3 hours",
+            "cost": 0
+          },
+          {
+            "time": "afternoon",
+            "title": "Ueno Park and Museums",
+            "description": "Visit Ueno Park, home to several museums such as the Tokyo National Museum and Ueno Zoo.",
+            "location": "Ueno Park",
+            "coordinates": {
+              "lat": 35.7142,
+              "lng": 139.7745
+            },
+            "duration": "3 hours",
+            "cost": 20
+          },
+          {
+            "time": "evening",
+            "title": "Yakatabune Dinner Cruise",
+            "description": "Enjoy a traditional Japanese dinner on a Yakatabune boat cruise in Tokyo Bay.",
+            "location": "Tokyo Bay",
+            "coordinates": {
+              "lat": 35.6577,
+              "lng": 139.7595
+            },
+            "duration": "2.5 hours",
+            "cost": 80
+          }
+        ]
+      },
+      {
+        "day": 7,
+        "date": "2025-04-29",
+        "activities": [
+          {
+            "time": "morning",
+            "title": "Sumo Wrestling Experience",
+            "description": "Watch a sumo wrestling match and learn about this traditional Japanese sport.",
+            "location": "Ryogoku Kokugikan",
+            "coordinates": {
+              "lat": 35.6960,
+              "lng": 139.7930
+            },
+            "duration": "3 hours",
+            "cost": 60
+          },
+          {
+            "time": "afternoon",
+            "title": "Edo-Tokyo Museum",
+            "description": "Visit the Edo-Tokyo Museum to learn about Tokyo's historical transformation from Edo to the present day.",
+            "location": "Edo-Tokyo Museum",
+            "coordinates": {
+              "lat": 35.6963,
+              "lng": 139.7965
+            },
+            "duration": "2 hours",
+            "cost": 10
+          },
+          {
+            "time": "evening",
+            "title": "Tokyo Tower Night View",
+            "description": "Ascend Tokyo Tower for a night view of the city, enjoying the illuminated skyline.",
+            "location": "Tokyo Tower",
+            "coordinates": {
+              "lat": 35.6586,
+              "lng": 139.7454
+            },
+            "duration": "1.5 hours",
+            "cost": 15
+          }
+        ]
+      },
+      {
+        "day": 8,
+        "date": "2025-04-30",
+        "activities": [
+          {
+            "time": "morning",
+            "title": "TeamLab Borderless",
+            "description": "Experience the immersive digital art exhibits at TeamLab Borderless, a unique interactive museum.",
+            "location": "TeamLab Borderless",
+            "coordinates": {
+              "lat": 35.6272,
+              "lng": 139.7763
+            },
+            "duration": "3 hours",
+            "cost": 30
+          },
+          {
+            "time": "afternoon",
+            "title": "Odaiba Exploration",
+            "description": "Explore Odaiba, a futuristic entertainment district on a man-made island in Tokyo Bay.",
+            "location": "Odaiba",
+            "coordinates": {
+              "lat": 35.6250,
+              "lng": 139.7752
+            },
+            "duration": "3 hours",
+            "cost": 0
+          },
+          {
+            "time": "evening",
+            "title": "Gundam Cafe Experience",
+            "description": "Visit the Gundam Cafe in Odaiba for dinner and enjoy a themed dining experience.",
+            "location": "Gundam Cafe Odaiba",
+            "coordinates": {
+              "lat": 35.6252,
+              "lng": 139.7746
+            },
+            "duration": "1.5 hours",
+            "cost": 25
+          }
+        ]
+      },
+      {
+        "day": 9,
+        "date": "2025-05-01",
+        "activities": [
+          {
+            "time": "full day",
+            "title": "Nikko Day Trip",
+            "description": "Take a day trip to Nikko, a UNESCO World Heritage site, to visit Toshogu Shrine and enjoy the natural scenery.",
+            "location": "Nikko",
+            "coordinates": {
+              "lat": 36.7198,
+              "lng": 139.6982
+            },
+            "duration": "10 hours",
+            "cost": 90
+          }
+        ]
+      },
+      {
+        "day": 10,
+        "date": "2025-05-02",
+        "activities": [
+          {
+            "time": "morning",
+            "title": "Hamarikyu Gardens",
+            "description": "Relax in the tranquil Hamarikyu Gardens, a beautiful Edo-period garden surrounded by the modern cityscape.",
+            "location": "Hamarikyu Gardens",
+            "coordinates": {
+              "lat": 35.6628,
+              "lng": 139.7634
+            },
+            "duration": "2 hours",
+            "cost": 5
+          },
+          {
+            "time": "afternoon",
+            "title": "Roppongi Hills",
+            "description": "Visit Roppongi Hills for shopping, dining, and panoramic city views from the observation deck.",
+            "location": "Roppongi Hills",
+            "coordinates": {
+              "lat": 35.6605,
+              "lng": 139.7292
+            },
+            "duration": "3 hours",
+            "cost": 25
+          },
+          {
+            "time": "evening",
+            "title": "Tokyo Midtown",
+            "description": "Explore Tokyo Midtown, a modern complex with shops, restaurants, and art exhibits.",
+            "location": "Tokyo Midtown",
+            "coordinates": {
+              "lat": 35.6655,
+              "lng": 139.7303
+            },
+            "duration": "2 hours",
+            "cost": 0
+          }
+        ]
+      },
+      {
+        "day": 11,
+        "date": "2025-05-03",
+        "activities": [
+          {
+            "time": "morning",
+            "title": "Ghibli Museum",
+            "description": "Visit the Ghibli Museum, dedicated to the works of Studio Ghibli, famous for its animated films.",
+            "location": "Ghibli Museum",
+            "coordinates": {
+              "lat": 35.6964,
+              "lng": 139.5703
+            },
+            "duration": "3 hours",
+            "cost": 20
+          },
+          {
+            "time": "afternoon",
+            "title": "Inokashira Park",
+            "description": "Relax in Inokashira Park, a beautiful park with a pond, perfect for a leisurely stroll or a boat ride.",
+            "location": "Inokashira Park",
+            "coordinates": {
+              "lat": 35.6983,
+              "lng": 139.5708
+            },
+            "duration": "2 hours",
+            "cost": 0
+          },
+          {
+            "time": "evening",
+            "title": "Kichijoji Shopping",
+            "description": "Explore the lively shopping streets of Kichijoji, filled with boutiques, cafes, and restaurants.",
+            "location": "Kichijoji",
+            "coordinates": {
+              "lat": 35.7036,
+              "lng": 139.5799
+            },
+            "duration": "2 hours",
+            "cost": 0
+          }
+        ]
+      },
+      {
+        "day": 12,
+        "date": "2025-05-04",
+        "activities": [
+          {
+            "time": "morning",
+            "title": "Tokyo Disneyland or DisneySea",
+            "description": "Spend the day enjoying the rides and attractions at Tokyo Disneyland or DisneySea.",
+            "location": "Tokyo Disneyland",
+            "coordinates": {
+              "lat": 35.6329,
+              "lng": 139.8804
+            },
+            "duration": "8 hours",
+            "cost": 80
+          }
+        ]
+      },
+      {
+        "day": 13,
+        "date": "2025-05-05",
+        "activities": [
+          {
+            "time": "morning",
+            "title": "Last-minute Shopping in Shibuya",
+            "description": "Spend the morning shopping in Shibuya, visiting famous spots like Shibuya Crossing and Shibuya 109.",
+            "location": "Shibuya",
+            "coordinates": {
+              "lat": 35.6595,
+              "lng": 139.7005
+            },
+            "duration": "2 hours",
+            "cost": 0
+          },
+          {
+            "time": "afternoon",
+            "title": "Departure",
+            "description": "Check-out from the hotel and head to the airport for departure.",
+            "location": "Hotel in Shinjuku",
+            "coordinates": {
+              "lat": 35.6895,
+              "lng": 139.6917
+            },
+            "duration": "2 hours",
+            "cost": 0
+          }
+        ]
+      }
+    ],
+    "budget": {
+      "accommodation": 1500,
+      "food": 600,
+      "activities": 500,
+      "transport": 300,
+      "total": 2900
+    },
+    "travelTips": [
+      "Don't forget to carry a portable Wi-Fi device or SIM card for easy internet access.",
+      "Purchase a Suica or Pasmo card for convenient travel on public transport.",
+      "Try to learn a few basic Japanese phrases to enhance your travel experience."
+    ]
+  }

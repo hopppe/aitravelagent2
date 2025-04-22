@@ -135,6 +135,26 @@ function formatDate(date: Date): string {
   return `${month} ${day}${suffix}, ${year}`;
 }
 
+// Function to sanitize JSON - fixes common JSON syntax issues
+function sanitizeJSON(content: string): string {
+  console.log('Sanitizing JSON content');
+  
+  // Remove JavaScript-style comments
+  let sanitized = content.replace(/\/\/.*?(\r?\n|$)/g, '$1')
+                        .replace(/\/\*[\s\S]*?\*\//g, '');
+                        
+  // Fix property names without quotes
+  sanitized = sanitized.replace(/(\{|\,)\s*([a-zA-Z0-9_]+)\s*\:/g, '$1"$2":');
+  
+  // Remove trailing commas
+  sanitized = sanitized.replace(/,(\s*[\]\}])/g, '$1');
+  
+  // Replace single quotes with double quotes
+  sanitized = sanitized.replace(/'/g, '"');
+  
+  return sanitized;
+}
+
 // Ensure all activities have valid coordinates
 function ensureValidCoordinates(itinerary: any) {
   if (!itinerary || !itinerary.days || !Array.isArray(itinerary.days)) {
@@ -217,7 +237,7 @@ serve(async (req: Request) => {
           'Authorization': `Bearer ${OPENAI_API_KEY}`,
         },
         body: JSON.stringify({
-          model: 'gpt-3.5-turbo',
+          model: 'gpt-3.5-turbo-16k',
           messages: [
             {
               role: 'system',
@@ -229,7 +249,7 @@ serve(async (req: Request) => {
             }
           ],
           temperature: 0.7,
-          max_tokens: 3000,
+          max_tokens: 8000,
         }),
       });
 
@@ -252,7 +272,15 @@ serve(async (req: Request) => {
           try {
             itinerary = JSON.parse(jsonMatch[0]);
           } catch (err2: any) {
-            throw new Error(`Failed to parse itinerary JSON: ${err2.message}`);
+            // Try to sanitize JSON
+            try {
+              console.log('Attempting to sanitize the JSON');
+              const sanitizedJSON = sanitizeJSON(itineraryContent);
+              itinerary = JSON.parse(sanitizedJSON);
+              console.log('Sanitized JSON parsed successfully');
+            } catch (err3: any) {
+              throw new Error(`Failed to parse itinerary JSON: ${err.message}`);
+            }
           }
         } else {
           throw new Error(`Failed to parse itinerary JSON: ${err.message}`);

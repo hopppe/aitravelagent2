@@ -1,0 +1,220 @@
+{
+  "destination": "Paris",
+  "tripName": "Gastronomic and Historical Delights in the City of Lights",
+  "dates": {
+    "start": "2025-04-24",
+    "end": "2025-04-28"
+  },
+  "summary": "Embark on a culinary and historical journey through the enchanting city of Paris, exploring its rich food culture and fascinating history.",
+  "days": [
+    {
+      "day": 1,
+      "date": "2025-04-24",
+      "activities": [
+        {
+          "time": "morning",
+          "title": "Visit to Louvre Museum",
+          "description": "Explore one of the world's largest and most famous art museums, home to thousands of works including the iconic Mona Lisa.",
+          "location": "Louvre Museum",
+          "coordinates": {
+            "lat": 48.8606,
+            "lng": 2.3376
+          },
+          "duration": "3 hours",
+          "cost": 20
+        },
+        {
+          "time": "afternoon",
+          "title": "Lunch at Le Grand Vefour",
+          "description": "Indulge in a gourmet French meal at this historic Michelin-starred restaurant known for its exquisite cuisine.",
+          "location": "Le Grand Vefour",
+          "coordinates": {
+            "lat": 48.8635,
+            "lng": 2.3361
+          },
+          "duration": "2 hours",
+          "cost": 100
+        },
+        {
+          "time": "evening",
+          "title": "Seine River Cruise",
+          "description": "Enjoy a relaxing cruise along the Seine River, taking in the illuminated landmarks of Paris by night.",
+          "location": "Seine River",
+          "coordinates": {
+            "lat": 48.8584,
+            "lng": 2.2945
+          },
+          "duration": "1.5 hours",
+          "cost": 30
+        }
+      ]
+    },
+    {
+      "day": 2,
+      "date": "2025-04-25",
+      "activities": [
+        {
+          "time": "morning",
+          "title": "Breakfast at Angelina",
+          "description": "Start your day with a delicious breakfast at Angelina, famous for its decadent hot chocolate and pastries.",
+          "location": "Angelina Tearoom",
+          "coordinates": {
+            "lat": 48.8652,
+            "lng": 2.3287
+          },
+          "duration": "1 hour",
+          "cost": 15
+        },
+        {
+          "time": "afternoon",
+          "title": "Explore Montmartre",
+          "description": "Wander through the charming streets of Montmartre, visit the Sacré-Cœur Basilica, and discover the artistic heritage of the area.",
+          "location": "Montmartre",
+          "coordinates": {
+            "lat": 48.8867,
+            "lng": 2.3431
+          },
+          "duration": "3 hours",
+          "cost": 0
+        },
+        {
+          "time": "evening",
+          "title": "Dinner at Le Procope",
+          "description": "Dine at Le Procope, Paris' oldest cafe founded in 1686, and enjoy traditional French dishes in a historic setting.",
+          "location": "Le Procope",
+          "coordinates": {
+            "lat": 48.8539,
+            "lng": 2.3426
+          },
+          "duration": "2 hours",
+          "cost": 80
+        }
+      ]
+    },
+    {
+      "day": 3,
+      "date": "2025-04-26",
+      "activities": [
+        {
+          "time": "morning",
+          "title": "Versailles Palace Tour",
+          "description": "Take a day trip to the magnificent Palace of Versailles, a UNESCO World Heritage site known for its opulent architecture and gardens.",
+          "location": "Palace of Versailles",
+          "coordinates": {
+            "lat": 48.8014,
+            "lng": 2.1309
+          },
+          "duration": "5 hours",
+          "cost": 50
+        },
+        {
+          "time": "afternoon",
+          "title": "Lunch at Ore Ducasse",
+          "description": "Savor a gourmet meal at Ore Ducasse, a restaurant overlooking the Versailles Orangerie with a menu inspired by Alain Ducasse.",
+          "location": "Ore Ducasse",
+          "coordinates": {
+            "lat": 48.8047,
+            "lng": 2.1234
+          },
+          "duration": "2 hours",
+          "cost": 90
+        },
+        {
+          "time": "evening",
+          "title": "Evening Stroll along Champs-Élysées",
+          "description": "Experience the glamour of Paris with a leisurely walk down the iconic Champs-Élysées, lined with shops, cafes, and theaters.",
+          "location": "Champs-Élysées",
+          "coordinates": {
+            "lat": 48.8699,
+            "lng": 2.3073
+          },
+          "duration": "2 hours",
+          "cost": 0
+        }
+      ]
+    },
+    {
+      "day": 4,
+      "date": "2025-04-27",
+      "activities": [
+        {
+          "time": "morning",
+          "title": "Paris Food Tour",
+          "description": "Embark on a guided food tour to sample delicious French pastries, cheeses, chocolates, and other culinary delights.",
+          "location": "Various locations in Paris",
+          "coordinates": {
+            "lat": 48.8566,
+            "lng": 2.3522
+          },
+          "duration": "4 hours",
+          "cost": 60
+        },
+        {
+          "time": "afternoon",
+          "title": "Visit to Notre-Dame Cathedral",
+          "description": "Discover the stunning architecture and history of Notre-Dame Cathedral, a masterpiece of French Gothic art.",
+          "location": "Notre-Dame Cathedral",
+          "coordinates": {
+            "lat": 48.8523,
+            "lng": 2.3498
+          },
+          "duration": "2 hours",
+          "cost": 0
+        },
+        {
+          "time": "evening",
+          "title": "Dinner at Le Cinq",
+          "description": "Indulge in a luxurious dining experience at Le Cinq, a three-Michelin-star restaurant offering exquisite French cuisine.",
+          "location": "Le Cinq",
+          "coordinates": {
+            "lat": 48.8722,
+            "lng": 2.3006
+          },
+          "duration": "3 hours",
+          "cost": 200
+        }
+      ]
+    },
+    {
+      "day": 5,
+      "date": "2025-04-28",
+      "activities": [
+        {
+          "time": "morning",
+          "title": "Breakfast at Claus",
+          "description": "Enjoy a delightful breakfast at Claus, a popular Parisian cafe known for its fresh pastries and artisanal bread.",
+          "location": "Claus",
+          "coordinates": {
+            "lat": 48.8637,
+            "lng": 2.3387
+          },
+          "duration": "1 hour",
+          "cost": 20
+        },
+        {
+          "time": "afternoon",
+          "title": "Visit the Musée d'Orsay",
+          "description": "Explore the impressive collection of Impressionist and Post-Impressionist masterpieces housed in a former railway station.",
+          "location": "Musée d'Orsay",
+          "coordinates": {
+            "lat": 48.8599,
+            "lng": 2.3266
+          },
+          "duration": "3 hours",
+          "cost": 15
+        }
+      ]
+    }
+  ],
+  "budget": {
+    "accommodation": 600,
+    "food": 505,
+    "activities": 285,
+    "transport": 200,
+    "total": 1590
+  },
+  "travelTips": [
+    "Try to learn a few basic French phrases as it can enhance your experience in Paris.",
+    "Keep an eye out for special exhibitions or events happening during your visit."
+  ]
+} 

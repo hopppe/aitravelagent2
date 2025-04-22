@@ -242,7 +242,10 @@ function DayColumn({ day, index }: { day: Day, index: number }) {
                 </div>
                 
                 {expandedActivity === activity.id && (
-                  <div className="fixed top-1/4 left-1/2 transform -translate-x-1/2 z-50 bg-white rounded-lg shadow-xl p-4 w-80">
+                  <div 
+                    key={`overlay-${activity.id}`}
+                    className="fixed top-1/4 left-1/2 transform -translate-x-1/2 z-50 bg-white rounded-lg shadow-xl p-4 w-80"
+                  >
                     <h4 className="font-bold mb-2">{activity.title}</h4>
                     <p className="text-sm text-gray-500 mb-1">{activity.time}</p>
                     <p className="text-sm mb-2">{activity.description}</p>
