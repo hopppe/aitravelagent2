@@ -13,6 +13,10 @@ const ErrorBoundary = dynamic(
 export const metadata: Metadata = {
   title: 'AI Travel Agent',
   description: 'Plan your perfect trip with the help of AI',
+  icons: {
+    icon: '/favicon.ico',
+    apple: '/apple-touch-icon.png',
+  },
 };
 
 export default function RootLayout({

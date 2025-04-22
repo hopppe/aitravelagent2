@@ -39,9 +39,10 @@ interface ItineraryTabsProps {
   budget: Budget | undefined;
   title?: string;
   summary?: string;
+  travelTips?: string[];
 }
 
-export default function ItineraryTabs({ days, budget = {}, title = '', summary = '' }: ItineraryTabsProps) {
+export default function ItineraryTabs({ days, budget = {}, title = '', summary = '', travelTips = [] }: ItineraryTabsProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   
   const handleScrollLeft = () => {
@@ -113,6 +114,21 @@ export default function ItineraryTabs({ days, budget = {}, title = '', summary =
           <BudgetView budget={budget} />
         </div>
       </div>
+
+      {/* Travel Tips Section */}
+      {travelTips && travelTips.length > 0 && (
+        <div className="bg-white rounded-lg shadow-md p-6">
+          <h3 className="text-xl font-bold text-primary mb-4">Travel Tips</h3>
+          <ul className="space-y-3">
+            {travelTips.map((tip, index) => (
+              <li key={index} className="flex items-start">
+                <span className="text-primary mr-2 mt-1">💡</span>
+                <span className="text-gray-700">{tip}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
     </div>
   );
 }

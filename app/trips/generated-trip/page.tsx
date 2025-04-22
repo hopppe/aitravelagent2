@@ -321,7 +321,8 @@ export default function GeneratedTripPage() {
         days={itinerary.days} 
         budget={normalizedBudget}
         title={itinerary.title || itinerary.tripName} 
-        summary={itinerary.summary} 
+        summary={itinerary.summary}
+        travelTips={itinerary.travelTips}
       />
       
       {/* Booking Services */}
