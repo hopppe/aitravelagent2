@@ -3,6 +3,16 @@ import { createJob, getJobStatus, updateJobStatus } from '../../../lib/supabase'
 import { generateJobId } from '../job-processor';
 
 export async function GET(request: Request) {
+  // Only run test jobs in development environment
+  if (process.env.NODE_ENV === 'production') {
+    return NextResponse.json({
+      success: false,
+      error: 'Test jobs are disabled in production environment'
+    }, { 
+      status: 403 
+    });
+  }
+  
   try {
     // Generate a test job ID
     const jobId = `test_job_${Date.now()}`;

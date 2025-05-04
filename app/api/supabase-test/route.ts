@@ -39,79 +39,89 @@ export async function GET(request: Request) {
       results.errors.push(`Connection error: ${connErr.message}`);
     }
     
-    // 3. Test job creation
-    const testJobId = `test_${Date.now()}`;
-    let jobCreated = false;
-    
-    try {
-      const createResult = await createJob(testJobId);
-      jobCreated = createResult;
-      results.tests.createJob = {
-        success: createResult,
-        jobId: testJobId
-      };
-    } catch (createErr: any) {
-      results.tests.createJob = {
-        success: false,
-        error: { message: createErr.message }
-      };
-      results.errors.push(`Job creation error: ${createErr.message}`);
-    }
-    
-    // 4. Test job status retrieval
-    if (jobCreated) {
+    // 3. Test job creation (only in development)
+    if (process.env.NODE_ENV !== 'production') {
+      const testJobId = `test_${Date.now()}`;
+      let jobCreated = false;
+      
       try {
-        const statusResult = await getJobStatus(testJobId);
-        results.tests.getJobStatus = {
-          success: statusResult.status !== 'not_found',
-          status: statusResult.status
+        const createResult = await createJob(testJobId);
+        jobCreated = createResult;
+        results.tests.createJob = {
+          success: createResult,
+          jobId: testJobId
         };
-        
-        if (statusResult.status === 'not_found') {
-          results.errors.push(`Job status error: Job not found immediately after creation`);
-        }
-      } catch (statusErr: any) {
-        results.tests.getJobStatus = {
+      } catch (createErr: any) {
+        results.tests.createJob = {
           success: false,
-          error: { message: statusErr.message }
+          error: { message: createErr.message }
         };
-        results.errors.push(`Job status error: ${statusErr.message}`);
+        results.errors.push(`Job creation error: ${createErr.message}`);
       }
       
-      // 5. Test job status update
-      try {
-        const updateResult = await updateJobStatus(testJobId, 'completed', { 
-          result: { test: 'Successful test' } 
-        });
-        
-        results.tests.updateJobStatus = {
-          success: updateResult
-        };
-        
-        if (!updateResult) {
-          results.errors.push(`Job update error: Failed to update job status`);
+      // 4. Test job status retrieval
+      if (jobCreated) {
+        try {
+          const statusResult = await getJobStatus(testJobId);
+          results.tests.getJobStatus = {
+            success: statusResult.status !== 'not_found',
+            status: statusResult.status
+          };
+          
+          if (statusResult.status === 'not_found') {
+            results.errors.push(`Job status error: Job not found immediately after creation`);
+          }
+        } catch (statusErr: any) {
+          results.tests.getJobStatus = {
+            success: false,
+            error: { message: statusErr.message }
+          };
+          results.errors.push(`Job status error: ${statusErr.message}`);
         }
-      } catch (updateErr: any) {
-        results.tests.updateJobStatus = {
-          success: false,
-          error: { message: updateErr.message }
-        };
-        results.errors.push(`Job update error: ${updateErr.message}`);
+        
+        // 5. Test job status update
+        try {
+          const updateResult = await updateJobStatus(testJobId, 'completed', { 
+            result: { test: 'Successful test' } 
+          });
+          
+          results.tests.updateJobStatus = {
+            success: updateResult
+          };
+          
+          if (!updateResult) {
+            results.errors.push(`Job update error: Failed to update job status`);
+          }
+        } catch (updateErr: any) {
+          results.tests.updateJobStatus = {
+            success: false,
+            error: { message: updateErr.message }
+          };
+          results.errors.push(`Job update error: ${updateErr.message}`);
+        }
       }
+      
+      // 6. Overall assessment
+      results.success = results.errors.length === 0;
+      results.message = results.success 
+        ? "All Supabase connectivity tests passed successfully!" 
+        : `Failed ${results.errors.length} tests. See 'errors' for details.`;
+    } else {
+      results.tests.createJob = {
+        skipped: true,
+        message: 'Job creation test skipped in production environment'
+      };
+      
+      results.success = results.tests.connection.success;
+      results.message = results.success ? 'Connection test passed successfully' : 'Connection test failed';
     }
-    
-    // 6. Overall assessment
-    results.success = results.errors.length === 0;
-    results.message = results.success 
-      ? "All Supabase connectivity tests passed successfully!" 
-      : `Failed ${results.errors.length} tests. See 'errors' for details.`;
     
     return NextResponse.json(results);
   } catch (error: any) {
+    console.error('Supabase test error:', error);
     return NextResponse.json({
       success: false,
-      message: "Error running Supabase connectivity tests",
-      error: error.message,
+      error: error.message || 'Unknown error',
       timestamp: new Date().toISOString()
     }, { status: 500 });
   }

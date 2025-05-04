@@ -6,6 +6,14 @@ export const runtime = 'nodejs';
 export const maxDuration = 15; // 15 seconds for this debug endpoint
 
 export async function GET(request: Request) {
+  // Only allow debug jobs in development environment
+  if (process.env.NODE_ENV === 'production') {
+    return NextResponse.json({
+      success: false,
+      message: "Debug jobs are disabled in production environment"
+    }, { status: 403 });
+  }
+  
   try {
     // Generate a job ID with a timestamp prefix to ensure uniqueness
     const timestamp = Date.now();

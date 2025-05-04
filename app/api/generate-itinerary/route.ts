@@ -6,12 +6,9 @@ import { createLogger } from '../../../lib/logger';
 // Initialize logger
 const logger = createLogger('generate-itinerary');
 
-// Configure runtime for serverless function - using edge for more consistent timeout behavior
+// Configure runtime for serverless function
 export const runtime = 'nodejs';
 export const maxDuration = 60; // Set max duration to 60 seconds
-
-// Check if running in production environment
-const isProduction = process.env.NODE_ENV === 'production';
 
 // Check if Supabase is properly configured
 const isSupabaseConfigured = Boolean(
@@ -39,7 +36,6 @@ export async function POST(request: Request) {
     logger.info(`API Request started: ${new Date().toISOString()}`);
     logger.info('Environment:', {
       nodeEnv: process.env.NODE_ENV,
-      isProduction: process.env.NODE_ENV === 'production'
     });
     
     // Log environment variables (without exposing actual values)
@@ -105,7 +101,7 @@ export async function POST(request: Request) {
       preferences: surveyData.preferences 
     });
 
-    // Create a unique job ID
+    // Create a unique job ID - use a consistent format for all environments
     const jobId = generateJobId();
     logger.info(`Generated new job ID: ${jobId}`);
 
