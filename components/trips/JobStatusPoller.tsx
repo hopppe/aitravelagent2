@@ -10,6 +10,7 @@ interface JobStatusPollerProps {
   onError: (error: string) => void;
   pollingInterval?: number; // ms between polls
   maxPolls?: number; // max number of polls before giving up
+  tripDays?: number; // Number of days in the trip for progress calculation
 }
 
 // Type guard functions to help TypeScript narrow types
@@ -20,21 +21,29 @@ const JobStatusPoller: React.FC<JobStatusPollerProps> = ({
   jobId,
   onComplete,
   onError,
-  pollingInterval = 3000, // Default 3 seconds (increased from 2)
-  maxPolls = 120, // Default max 6 minutes (increased from 60)
+  pollingInterval = 3000, // Default 3 seconds
+  maxPolls = 120, // Default max 6 minutes
+  tripDays = 5, // Default to 5 days if not specified
 }) => {
   const [status, setStatus] = useState<string>('queued');
   const [pollCount, setPollCount] = useState(0);
-  const [message, setMessage] = useState('Your itinerary is being generated...');
-  const [showDetails, setShowDetails] = useState(false);
+  const [message, setMessage] = useState('We\'re crafting your perfect itinerary...');
   const [details, setDetails] = useState<JobData | null>(null);
   const [notFoundCount, setNotFoundCount] = useState(0);
   const [hasErrored, setHasErrored] = useState(false);
   const [errorDetails, setErrorDetails] = useState<string>('');
   
   // Maximum number of "not found" responses before considering it an error
-  // This helps with eventual consistency in cloud environments
-  const MAX_NOT_FOUND_RETRIES = 20; // Increased from 5 to be more resilient
+  const MAX_NOT_FOUND_RETRIES = 20;
+
+  // Calculate expected time based on trip days (30-60 seconds range)
+  const minSeconds = 30;
+  const maxSeconds = 60;
+  // Scale polling based on trip days (more days = longer generation time)
+  const expectedPolls = Math.min(
+    Math.max(minSeconds, tripDays * 5), // 5 seconds per day, minimum 30 seconds
+    maxSeconds
+  ) / (pollingInterval / 1000);
 
   useEffect(() => {
     if (!jobId) {
@@ -49,33 +58,16 @@ const JobStatusPoller: React.FC<JobStatusPollerProps> = ({
 
     const pollJobStatus = async () => {
       try {
-        console.log(`Polling job status for ${jobId} (attempt ${pollCount + 1})`);
-        
-        const startTime = Date.now();
         const response = await fetch(`/api/job-status?jobId=${jobId}`);
-        const responseTime = Date.now() - startTime;
-        
-        console.log(`Job status response received in ${responseTime}ms, status: ${response.status}`);
         
         if (!response.ok) {
-          // Try to parse error response for debugging
+          // Try to parse error response
           let errorData;
           try {
             errorData = await response.json();
-            console.log('Error response body:', errorData);
           } catch (e) {
-            console.error('Failed to parse error response:', e);
             errorData = { error: `HTTP Error ${response.status}` };
           }
-          
-          // Log response headers for debugging
-          const headers: Record<string, string> = {};
-          response.headers.forEach((value, key) => {
-            headers[key] = value;
-          });
-          console.log('Response headers:', headers);
-          
-          console.error(`Error response from job-status API: ${response.status}`, errorData);
           
           // Special handling for 404 Not Found errors
           if (response.status === 404) {
@@ -83,22 +75,17 @@ const JobStatusPoller: React.FC<JobStatusPollerProps> = ({
             const newNotFoundCount = notFoundCount + 1;
             setNotFoundCount(newNotFoundCount);
             
-            console.log(`Job ${jobId} not found count: ${newNotFoundCount}/${MAX_NOT_FOUND_RETRIES}`);
-            
             // Only throw an error if we've exceeded max retries for not found
             if (newNotFoundCount >= MAX_NOT_FOUND_RETRIES) {
-              const errMsg = `Job ${jobId} not found after ${MAX_NOT_FOUND_RETRIES} attempts. The job may have been lost or failed to create properly.`;
-              console.error(errMsg);
+              const errMsg = `Job ${jobId} not found after ${MAX_NOT_FOUND_RETRIES} attempts.`;
               setErrorDetails(errMsg);
               throw new Error(errMsg);
             } else {
               // For the first few "not found" responses, just keep polling
-              console.log(`Job ${jobId} not found (attempt ${newNotFoundCount}/${MAX_NOT_FOUND_RETRIES}), will retry`);
-              setMessage(`Your request is being processed (attempt ${newNotFoundCount}/${MAX_NOT_FOUND_RETRIES})...`);
+              setMessage('Getting everything ready for your trip...');
               
               // Add increasing delay for each retry (exponential backoff)
               const backoffDelay = Math.min(1000 * Math.pow(1.5, newNotFoundCount - 1), 10000);
-              console.log(`Applying backoff delay of ${backoffDelay}ms before next attempt`);
               await new Promise(resolve => setTimeout(resolve, backoffDelay));
               
               // Don't throw, just continue polling
@@ -123,23 +110,17 @@ const JobStatusPoller: React.FC<JobStatusPollerProps> = ({
         switch (data.status) {
           case 'completed':
             if (data.result?.rawContent) {
-              console.log(`[${jobId}] Job contains raw content`);
-              
               // The result has the raw content from OpenAI - client will parse
               onComplete(data.result);
             } else if (data.result?.itinerary) {
-              console.log(`[${jobId}] Job contains parsed itinerary`);
-              
               // Legacy format with parsed itinerary
               onComplete(data.result);
             } else if (data.raw_result) {
               // Try to parse the raw_result directly
-              console.log(`[${jobId}] Job contains raw_result, attempting to parse`);
               try {
                 // Set the raw content directly for the client to parse
                 onComplete({ rawContent: data.raw_result });
               } catch (parseError) {
-                console.error(`[${jobId}] Failed to use raw_result:`, parseError);
                 const errMsg = 'Failed to parse job result';
                 setErrorDetails(errMsg);
                 onError(errMsg);
@@ -147,7 +128,6 @@ const JobStatusPoller: React.FC<JobStatusPollerProps> = ({
             } else {
               // No recognizable result format
               const errMsg = 'Completed job has no valid result format';
-              console.error(`[${jobId}] ${errMsg}`, data);
               setErrorDetails(errMsg);
               onError(errMsg);
             }
@@ -155,28 +135,23 @@ const JobStatusPoller: React.FC<JobStatusPollerProps> = ({
             
           case 'failed':
             const errMsg = data.error || 'Job failed';
-            console.error(`Job ${jobId} failed:`, errMsg);
             setErrorDetails(errMsg);
             onError(errMsg);
             setMessage('The itinerary generation failed. Please try again.');
             break;
             
           case 'processing':
-            console.log(`Job ${jobId} is processing`);
-            setMessage('Your itinerary is being created. This may take up to 2 minutes...');
+            setMessage('Creating your personalized travel experience...');
             break;
             
           case 'queued':
-            console.log(`Job ${jobId} is queued`);
-            setMessage('Your request is in the queue. Processing will begin shortly...');
+            setMessage('Your trip is in our queue. We\'ll begin planning shortly...');
             break;
             
           default:
-            console.log(`Job ${jobId} has status: ${data.status}`);
-            setMessage(`Status: ${data.status}`);
+            setMessage(`Planning your perfect adventure...`);
         }
       } catch (error: any) {
-        console.error('Error polling job status:', error);
         setHasErrored(true);
         setErrorDetails(error.message || 'Unknown error');
         
@@ -184,7 +159,7 @@ const JobStatusPoller: React.FC<JobStatusPollerProps> = ({
         if (pollCount > 5) {
           onError(error.message || 'Failed to check job status');
         } else {
-          setMessage('Failed to check job status. Retrying...');
+          setMessage('Connection issue. Retrying...');
         }
       }
       
@@ -196,10 +171,24 @@ const JobStatusPoller: React.FC<JobStatusPollerProps> = ({
     const timer = setTimeout(pollJobStatus, pollingInterval);
     
     return () => clearTimeout(timer);
-  }, [jobId, status, pollCount, maxPolls, pollingInterval, onComplete, onError, notFoundCount]);
+  }, [jobId, status, pollCount, maxPolls, pollingInterval, onComplete, onError, notFoundCount, tripDays]);
 
-  // Progress calculation based on poll count and max polls
-  const progress = Math.min(Math.floor((pollCount / maxPolls) * 100), 99);
+  // Progress calculation based on expected time for trip days
+  // Use a non-linear easing function for smoother animation
+  const calculateProgress = () => {
+    // Normalized progress from 0 to 1 based on poll count
+    const normProgress = Math.min(pollCount / expectedPolls, 0.99);
+    
+    // Apply easing function to make progress feel more natural
+    // This creates a curve that starts slower and accelerates
+    const easedProgress = normProgress < 0.5
+      ? 2 * normProgress * normProgress
+      : 1 - Math.pow(-2 * normProgress + 2, 2) / 2;
+      
+    return Math.round(easedProgress * 100);
+  };
+  
+  const progress = calculateProgress();
   
   // Calculate color based on status
   const getStatusColor = () => {
@@ -207,7 +196,7 @@ const JobStatusPoller: React.FC<JobStatusPollerProps> = ({
       case 'completed': return 'bg-green-500';
       case 'failed': return 'bg-red-500';
       case 'processing': return 'bg-blue-500';
-      default: return 'bg-gray-500';
+      default: return 'bg-blue-500';
     }
   };
 
@@ -219,83 +208,74 @@ const JobStatusPoller: React.FC<JobStatusPollerProps> = ({
   // If we've exceeded max polls but haven't completed or failed
   if (pollCount >= maxPolls && !isCompleted(status) && !isFailed(status)) {
     return (
-      <div className="mt-4 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
-        <h3 className="text-lg font-semibold text-yellow-800">Taking longer than expected</h3>
-        <p className="text-sm text-yellow-700 mb-2">
-          Your itinerary is still being generated, but it's taking longer than usual.
-        </p>
-        <div className="flex space-x-3">
-          <button 
-            onClick={() => window.location.reload()}
-            className="px-3 py-1 bg-yellow-600 text-white text-sm rounded hover:bg-yellow-700"
-          >
-            Refresh page
-          </button>
-          <button 
-            onClick={() => setPollCount(0)}
-            className="px-3 py-1 bg-gray-100 text-gray-800 text-sm rounded hover:bg-gray-200"
-          >
-            Keep waiting
-          </button>
-        </div>
-        {errorDetails && (
-          <div className="mt-2 text-xs text-red-700">
-            <p>Error details: {errorDetails}</p>
-            <p className="mt-1">Try checking your network connection or testing if the API is working.</p>
+      <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
+        <div className="bg-white p-6 rounded-xl shadow-lg max-w-md w-full">
+          <h3 className="text-lg font-semibold text-gray-900 mb-3">Taking longer than expected</h3>
+          <p className="text-sm text-gray-700 mb-4">
+            Your itinerary is still being generated, but it's taking longer than usual.
+          </p>
+          <div className="flex space-x-3">
+            <button 
+              onClick={() => window.location.reload()}
+              className="px-4 py-2 bg-blue-600 text-white text-sm rounded-lg font-medium hover:bg-blue-700 transition-colors"
+            >
+              Refresh page
+            </button>
+            <button 
+              onClick={() => setPollCount(0)}
+              className="px-4 py-2 bg-gray-100 text-gray-800 text-sm rounded-lg font-medium hover:bg-gray-200 transition-colors"
+            >
+              Keep waiting
+            </button>
           </div>
-        )}
+          {errorDetails && (
+            <div className="mt-4 p-3 bg-red-50 rounded-lg text-sm text-red-700">
+              <p>Error details: {errorDetails}</p>
+              <p className="mt-1">Try checking your network connection.</p>
+            </div>
+          )}
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="mt-4 p-4 bg-blue-50 border border-blue-100 rounded-lg">
-      <div className="flex justify-between items-center mb-2">
-        <h3 className="text-md font-medium text-blue-800">Generating your itinerary</h3>
-        <span className="text-sm text-blue-600">{progress}%</span>
-      </div>
-      
-      <div className="w-full bg-gray-200 rounded-full h-2.5">
-        <div 
-          className={`h-2.5 rounded-full ${getStatusColor()}`} 
-          style={{ width: `${progress}%` }}
-        ></div>
-      </div>
-      
-      <p className="text-sm text-blue-700 mt-2">{message}</p>
-      
-      {hasErrored && (
-        <p className="text-xs text-red-600 mt-1">
-          Encountered some connection issues, retrying...
-        </p>
-      )}
-      
-      <div className="mt-2 text-xs text-gray-500">
-        <button 
-          onClick={() => setShowDetails(!showDetails)}
-          className="underline focus:outline-none"
-        >
-          {showDetails ? 'Hide details' : 'Show details'}
-        </button>
-        
-        {showDetails && (
-          <div className="mt-2 p-2 bg-gray-100 rounded text-xs overflow-auto">
-            <p>Job ID: {jobId}</p>
-            <p>Status: {status}</p>
-            <p>Poll count: {pollCount}/{maxPolls}</p>
-            {hasErrored && <p className="text-red-600">Error: {errorDetails}</p>}
-            {details && (
-              <pre className="mt-2">{JSON.stringify(details, null, 2)}</pre>
-            )}
+    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
+      <div className="bg-white p-6 rounded-xl shadow-lg max-w-md w-full">
+        <div className="flex flex-col items-center mb-5">
+          <div className="mb-4 relative">
+            <svg className="w-16 h-16 text-blue-100" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <circle cx="50" cy="50" r="45" stroke="currentColor" strokeWidth="10" />
+            </svg>
+            <svg className="w-16 h-16 absolute top-0 left-0 text-blue-500" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <circle 
+                cx="50" 
+                cy="50" 
+                r="45" 
+                stroke="currentColor" 
+                strokeWidth="10"
+                strokeDasharray="283"
+                strokeDashoffset={283 - (283 * progress / 100)}
+                transform="rotate(-90 50 50)"
+              />
+            </svg>
+            <div className="absolute inset-0 flex items-center justify-center">
+              <span className="text-lg font-semibold text-gray-900">{progress}%</span>
+            </div>
           </div>
-        )}
-      </div>
-      
-      {notFoundCount > 0 && (
-        <div className="mt-2 text-xs text-orange-600">
-          <p>Job not found (attempt {notFoundCount}/{MAX_NOT_FOUND_RETRIES}). Still searching...</p>
+          <h3 className="text-lg font-semibold text-gray-900">Creating Your Itinerary</h3>
         </div>
-      )}
+        
+        <div className="text-center mb-2">
+          <p className="text-md text-gray-700">{message}</p>
+          
+          {hasErrored && (
+            <p className="text-xs text-red-600 mt-2">
+              Connection issue, retrying...
+            </p>
+          )}
+        </div>
+      </div>
     </div>
   );
 };

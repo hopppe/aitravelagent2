@@ -19,12 +19,24 @@ const nextConfig = {
       {
         protocol: 'http',
         hostname: 'upload.wikimedia.org',
+      },
+      {
+        protocol: 'https',
+        hostname: 'maps.googleapis.com',
+      },
+      {
+        protocol: 'https',
+        hostname: 'places.googleapis.com',
       }
     ],
+    dangerouslyAllowSVG: true,
+    contentDispositionType: 'attachment',
+    contentSecurityPolicy: "default-src 'self'; script-src 'none'; sandbox;",
   },
   env: {
     NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL,
     NEXT_PUBLIC_SUPABASE_ANON_KEY: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+    OPENAI_API_KEY: process.env.OPENAI_API_KEY,
     NEXT_CONFIG_AVAILABLE: 'true'
   },
   // Increase serverless function timeout (for Vercel deployments)

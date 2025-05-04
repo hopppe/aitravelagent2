@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { generateJobId, processItineraryResponse } from '../job-processor';
+import { generateJobId, processItineraryResponse, processItineraryJob } from '../job-processor';
 import { createJob, updateJobStatus, getJobStatus, supabase } from '../../../lib/supabase';
 import { createLogger } from '../../../lib/logger';
 
@@ -18,6 +18,9 @@ const isSupabaseConfigured = Boolean(
   process.env.NEXT_PUBLIC_SUPABASE_URL && 
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 );
+
+// Check if OpenAI API key is configured
+const isOpenAIConfigured = Boolean(process.env.OPENAI_API_KEY);
 
 // Survey data type
 type SurveyData = {
@@ -49,6 +52,13 @@ export async function POST(request: Request) {
       keyLength: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.length || 0
     });
 
+    // Log OpenAI configuration
+    logger.info('OpenAI API configuration:', {
+      hasApiKey: isOpenAIConfigured,
+      keyPrefix: process.env.OPENAI_API_KEY?.substring(0, 5) || 'missing',
+      keyLength: process.env.OPENAI_API_KEY?.length || 0
+    });
+
     // Only test Supabase connection if properly configured
     if (isSupabaseConfigured) {
       try {
@@ -73,6 +83,15 @@ export async function POST(request: Request) {
       }
     } else {
       logger.warn('⚠️ Skipping Supabase connection test - not configured');
+    }
+
+    // Validate OpenAI API key
+    if (!isOpenAIConfigured) {
+      logger.error('❌ OpenAI API key not configured');
+      return NextResponse.json(
+        { error: 'OpenAI API key not configured' },
+        { status: 500 }
+      );
     }
 
     // Parse the request body
@@ -152,50 +171,26 @@ export async function POST(request: Request) {
       logger.error('Error checking initial job status:', statusCheckError);
     }
 
-    // Call the Supabase Edge Function to process the itinerary
-    try {
-      logger.info(`Invoking Supabase Edge Function for job ${jobId}`);
-      
-      // Update job status to processing
-      await updateJobStatus(jobId, 'processing');
-      
-      if (!isSupabaseConfigured) {
-        throw new Error('Supabase URL or key is missing');
-      }
+    // Update job to processing state and store the prompt
+    await updateJobStatus(jobId, 'processing', { prompt });
+    logger.info(`Job ${jobId} status updated to processing with prompt stored`);
 
-      // Invoke the Edge Function with the generated prompt
-      const { data: functionData, error: functionError } = await supabase.functions.invoke(
-        'generate-itinerary',
-        {
-          body: {
-            jobId,
-            surveyData,
-            prompt // Send the prompt to the edge function
-          }
-        }
-      );
-
-      if (functionError) {
-        logger.error(`Error invoking Supabase Edge Function:`, functionError);
-        throw new Error(`Edge Function error: ${functionError.message || 'Unknown error'}`);
+    // Process the itinerary job directly (the API call will happen in the background)
+    // This allows us to return a response to the client quickly
+    void processItineraryJob(
+      jobId,
+      surveyData,
+      prompt,
+      process.env.OPENAI_API_KEY || ''
+    ).then(success => {
+      if (success) {
+        logger.info(`Background job processing completed successfully for job ${jobId}`);
+      } else {
+        logger.error(`Background job processing failed for job ${jobId}`);
       }
-
-      logger.info(`Supabase Edge Function invoked successfully for job ${jobId}:`, functionData);
-      
-      // If the edge function returned a result directly, process it
-      if (functionData && functionData.result) {
-        logger.info(`Processing immediate result from edge function for job ${jobId}`);
-        await processItineraryResponse(jobId, functionData.result);
-      }
-    } catch (edgeFunctionError: any) {
-      logger.error(`Failed to invoke Supabase Edge Function:`, edgeFunctionError);
-      
-      // Update job status to reflect the error but don't fail the response
-      // We want the client to keep polling the job status
-      await updateJobStatus(jobId, 'processing', {
-        error: `Edge function invocation error (will retry): ${edgeFunctionError.message || 'Unknown error'}`
-      });
-    }
+    }).catch(error => {
+      logger.error(`Error in background job processing for job ${jobId}:`, error);
+    });
 
     // Return immediately with the job ID
     logger.info(`Returning response for job ${jobId} with status: processing`);
@@ -231,70 +226,85 @@ export function generatePrompt(surveyData: SurveyData): string {
   const formattedStartDate = formatDate(startDate);
   const formattedEndDate = formatDate(endDate);
   
-  // Build the preferences section
-  let preferencesText = '';
-  if (surveyData.preferences && surveyData.preferences.length > 0) {
-    preferencesText = 'The traveler has expressed interest in the following: ' + 
-      surveyData.preferences.join(', ') + '. ';
+  // Determine budget guidelines based on selected budget
+  let budgetGuidelines = '';
+  switch(surveyData.budget.toLowerCase()) {
+    case 'budget':
+      budgetGuidelines = 'Include hostels, street food, free/low-cost activities';
+      break;
+    case 'moderate':
+      budgetGuidelines = 'Include mid-range hotels, casual restaurants, affordable attractions';
+      break;
+    case 'luxury':
+      budgetGuidelines = 'Include high-end hotels, fine dining, premium experiences';
+      break;
+    default:
+      budgetGuidelines = 'Include a mix of options appropriate for a moderate budget';
   }
 
-  // Construct the prompt
+  // Construct the prompt with improved flexibility
   return `
-Create a personalized travel itinerary for a trip to ${surveyData.destination} from ${formattedStartDate} to ${formattedEndDate} (${tripDuration} days).
+Create a travel itinerary for ${surveyData.destination} from ${formattedStartDate} to ${formattedEndDate} (${tripDuration} days).
 
-Trip purpose: ${surveyData.purpose}
-Budget level: ${surveyData.budget}
-${preferencesText}
+Tailor this itinerary for the traveler. Their purpose of the trip is ${surveyData.purpose}. Their budget is ${surveyData.budget} (${budgetGuidelines}). ${surveyData.preferences && surveyData.preferences.length > 0 ? `They like ${surveyData.preferences.join(', ')}, so include more of those activities.` : ''}
 
-Generate a comprehensive day-by-day travel itinerary with the following structure (as a valid JSON object):
-
+Return a JSON itinerary with this structure:
 {
-  "destination": "${surveyData.destination}",
-  "tripName": "<create a catchy name for this trip>",
-  "dates": {
-    "start": "${surveyData.startDate}",
-    "end": "${surveyData.endDate}"
-  },
-  "summary": "<brief overview of the trip highlighting key attractions and experiences>",
+  "destination": "City, Country",
+  "tripName": "Short title",
+  "overview": "Brief summary",
+  "startDate": "${surveyData.startDate}",
+  "endDate": "${surveyData.endDate}",
+  "duration": ${tripDuration},
+  "travelTips": ["2-4 essential tips for this destination"],
   "days": [
     {
       "day": 1,
-      "date": "${surveyData.startDate}",
+      "date": "YYYY-MM-DD",
+      "accommodation": {
+        "name": "Hotel/hostel/rental name",
+        "description": "Brief description",
+        "cost": number,
+        "coordinates": {"lat": number, "lng": number}
+      },
       "activities": [
         {
-          "time": "<morning/afternoon/evening>",
-          "title": "<activity name>",
-          "description": "<detailed description>",
-          "location": "<specific location name>",
-          "coordinates": {
-            "lat": <latitude as number>,
-            "lng": <longitude as number>
-          },
-          "duration": "<estimated duration>",
-          "cost": <numerical cost estimate as number>
-        },
-        ... more activities ...
+          "time": "Morning/Afternoon/Evening/Night",
+          "title": "Activity name",
+          "description": "Brief description",
+          "cost": number,
+          "transportMode": "Walk/Bus/Metro/Taxi/Train",
+          "transportCost": number,
+          "coordinates": {"lat": number, "lng": number}
+        }
+      ],
+      "meals": [
+        {
+          "type": "Breakfast/Lunch/Dinner",
+          "venue": "Restaurant name",
+          "description": "Brief description",
+          "cost": number,
+          "transportMode": "Walk/Bus/Metro/Taxi/Train",
+          "transportCost": number,
+          "coordinates": {"lat": number, "lng": number}
+        }
       ]
-    },
-    ... more days ...
-  ],
-  "budgetEstimate": {
-    "accommodation": <estimated total cost as number>,
-    "food": <estimated total cost as number>,
-    "activities": <estimated total cost as number>,
-    "transportation": <estimated total cost as number>,
-    "total": <total estimated cost as number>
-  },
-  "travelTips": [
-    "<useful tip for this destination>",
-    ... more tips ...
+    }
   ]
 }
 
-Remember, EACH activity MUST include valid and accurate coordinates (latitude and longitude) as numerical values - never use empty or placeholder coordinates. Research real locations in ${surveyData.destination} and include their actual coordinates.
-
-Only return valid JSON that can be parsed with JSON.parse(). Do not include any explanations, markdown formatting, or code blocks outside the JSON object. Ensure all property names and string values use double quotes, not single quotes.
-  `;
+IMPORTANT GUIDELINES:
+1. Return only valid JSON
+2. All coordinates must be precise numeric values with exactly 6 decimal places for accuracy (e.g., 40.123456, -74.123456)
+3. All costs must be numbers
+4. Include both activities AND meals in each day:
+   - Activities should be non-food experiences (sightseeing, museums, shopping, etc.)
+   - Meals should be food experiences (restaurants, cafes, food markets, etc.)
+   - Do NOT put food experiences in the activities array
+   - Always include 1-3 meals per day in the meals array
+5. Provide precise, real-world locations that exist
+6. Activities should make geographic sense (grouped by area when possible)
+7. Include accurate transportMode and transportCost for each activity and meal${surveyData.preferences.includes('food') ? '\n8. Since the traveler likes food, emphasize quality dining experiences in the meals section. If an experience involves food next to a meal time, dont add a meal as well' : ''}`;
 }
 
 // Format date for display

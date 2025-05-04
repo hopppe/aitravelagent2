@@ -41,30 +41,26 @@ function getDbCompatibleId(id: string): number {
 
 export async function GET(request: Request) {
   try {
-    logger.info(`Job status API called at ${new Date().toISOString()}`);
-    
     // Get the job ID from the query params
     const { searchParams } = new URL(request.url);
     const jobId = searchParams.get('jobId');
     
     if (!jobId) {
-      logger.error('Missing jobId parameter');
       return NextResponse.json(
         { error: 'Missing jobId parameter' },
         { status: 400 }
       );
     }
     
-    logger.info(`Checking status for job: ${jobId}`);
-    
-    // Debug info about the job ID conversion for logging
-    const dbCompatibleId = getDbCompatibleId(jobId);
-    logger.debug(`Job ID conversion: "${jobId}" -> ${dbCompatibleId} (db-compatible)`);
+    // Skip logging for pending jobs before they're actually created
+    if (jobId === 'pending') {
+      return NextResponse.json({
+        status: 'queued'
+      });
+    }
     
     // Get the job status from Supabase
     const statusResult = await getJobStatus(jobId);
-    
-    logger.info(`Job ${jobId} status result:`, statusResult);
     
     // For completed jobs with raw results that haven't been processed yet,
     // process them and return the processed data
@@ -85,7 +81,6 @@ export async function GET(request: Request) {
           itinerary: processedItinerary
         });
       } catch (processingError: any) {
-        logger.error(`Error processing raw response for job ${jobId}:`, processingError);
         return NextResponse.json({
           status: 'failed',
           error: `Error processing response: ${processingError.message}`
@@ -94,7 +89,6 @@ export async function GET(request: Request) {
     }
     
     // Return the status as-is if it's not a completed job with raw results
-    logger.info(`Returning job status: ${statusResult.status}`);
     return NextResponse.json({
       status: statusResult.status,
       result: statusResult.result,
@@ -102,7 +96,6 @@ export async function GET(request: Request) {
       raw_result: statusResult.raw_result
     });
   } catch (error: any) {
-    logger.error('Error in job status API:', error);
     return NextResponse.json(
       { error: `Server error: ${error.message}` },
       { status: 500 }

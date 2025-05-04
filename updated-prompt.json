@@ -1,0 +1,244 @@
+{
+  "destination": "Rome, Italy",
+  "tripName": "Roman Holiday",
+  "overview": "Enjoy a vacation in the historic city of Rome, Italy. Immerse yourself in the rich culture, indulge in delicious Italian cuisine, and explore iconic landmarks.",
+  "startDate": "2025-05-06",
+  "endDate": "2025-05-10",
+  "duration": 5,
+  "budget": {
+    "currency": "USD",
+    "total": 0,
+    "accommodation": 0,
+    "food": 0,
+    "transport": 0,
+    "activities": 0
+  },
+  "travelTips": [
+    "Try authentic Italian gelato",
+    "Visit the Vatican early in the morning to avoid crowds"
+  ],
+  "days": [
+    {
+      "day": 1,
+      "date": "2025-05-06",
+      "accommodation": {
+        "name": "Hotel Forum",
+        "description": "Centrally located hotel with comfortable rooms and a rooftop terrace overlooking the city.",
+        "cost": 140,
+        "coordinates": {"lat": 41.8925, "lng": 12.4854}
+      },
+      "activities": [
+        {
+          "time": "Morning",
+          "title": "Colosseum",
+          "description": "Explore the Colosseum, the largest amphitheater ever built, and learn about its fascinating history.",
+          "cost": 20,
+          "transportMode": "Metro",
+          "transportCost": 2,
+          "coordinates": {"lat": 41.8902, "lng": 12.4922}
+        },
+        {
+          "time": "Afternoon",
+          "title": "Roman Forum",
+          "description": "Visit the Roman Forum, the ancient city center of Rome, and discover its ruins and historical significance.",
+          "cost": 16,
+          "transportMode": "Walk",
+          "transportCost": 0,
+          "coordinates": {"lat": 41.8925, "lng": 12.4854}
+        }
+      ],
+      "meals": [
+        {
+          "type": "Lunch",
+          "venue": "Trattoria Luzzi",
+          "description": "Authentic Italian trattoria serving delicious Roman cuisine.",
+          "cost": 25,
+          "transportMode": "Walk",
+          "transportCost": 0,
+          "coordinates": {"lat": 41.8906, "lng": 12.4925}
+        },
+        {
+          "type": "Dinner",
+          "venue": "La Pergola",
+          "description": "Elegant rooftop restaurant offering fine dining and panoramic views of Rome.",
+          "cost": 100,
+          "transportMode": "Taxi",
+          "transportCost": 15,
+          "coordinates": {"lat": 41.9265, "lng": 12.4576}
+        }
+      ]
+    },
+    {
+      "day": 2,
+      "date": "2025-05-07",
+      "accommodation": {
+        "name": "Hotel Forum",
+        "description": "Centrally located hotel with comfortable rooms and a rooftop terrace overlooking the city.",
+        "cost": 140,
+        "coordinates": {"lat": 41.8925, "lng": 12.4854}
+      },
+      "activities": [
+        {
+          "time": "Morning",
+          "title": "Vatican Museums",
+          "description": "Discover the vast collection of art at the Vatican Museums, including masterpieces such as the Sistine Chapel.",
+          "cost": 30,
+          "transportMode": "Metro",
+          "transportCost": 2,
+          "coordinates": {"lat": 41.9064, "lng": 12.4533}
+        },
+        {
+          "time": "Afternoon",
+          "title": "St. Peter's Basilica",
+          "description": "Visit St. Peter's Basilica, the largest church in the world, and admire its stunning architecture and religious significance.",
+          "cost": 0,
+          "transportMode": "Walk",
+          "transportCost": 0,
+          "coordinates": {"lat": 41.9022, "lng": 12.4539}
+        }
+      ],
+      "meals": [
+        {
+          "type": "Lunch",
+          "venue": "Osteria dell'Angelo",
+          "description": "Charming osteria serving traditional Roman dishes.",
+          "cost": 30,
+          "transportMode": "Walk",
+          "transportCost": 0,
+          "coordinates": {"lat": 41.9041, "lng": 12.4509}
+        },
+        {
+          "type": "Dinner",
+          "venue": "Ristorante La Carbonara",
+          "description": "Cozy restaurant specializing in authentic Roman carbonara pasta.",
+          "cost": 35,
+          "transportMode": "Metro",
+          "transportCost": 2,
+          "coordinates": {"lat": 41.9057, "lng": 12.4803}
+        }
+      ]
+    },
+    {
+      "day": 3,
+      "date": "2025-05-08",
+      "accommodation": {
+        "name": "Hotel Forum",
+        "description": "Centrally located hotel with comfortable rooms and a rooftop terrace overlooking the city.",
+        "cost": 140,
+        "coordinates": {"lat": 41.8925, "lng": 12.4854}
+      },
+      "activities": [
+        {
+          "time": "Morning",
+          "title": "Trevi Fountain",
+          "description": "Marvel at the stunning Trevi Fountain, a masterpiece of Baroque art and a popular tourist attraction.",
+          "cost": 0,
+          "transportMode": "Walk",
+          "transportCost": 0,
+          "coordinates": {"lat": 41.9009, "lng": 12.4833}
+        },
+        {
+          "time": "Afternoon",
+          "title": "Pantheon",
+          "description": "Explore the ancient Roman Pantheon, a well-preserved temple dedicated to the gods of Rome.",
+          "cost": 0,
+          "transportMode": "Walk",
+          "transportCost": 0,
+          "coordinates": {"lat": 41.8986, "lng": 12.4769}
+        }
+      ],
+      "meals": [
+        {
+          "type": "Lunch",
+          "venue": "Da Francesco",
+          "description": "Cosy trattoria serving delicious Roman pizzas and pasta.",
+          "cost": 20,
+          "transportMode": "Walk",
+          "transportCost": 0,
+          "coordinates": {"lat": 41.8958, "lng": 12.4757}
+        },
+        {
+          "type": "Dinner",
+          "venue": "Ginger Sapori e Salute",
+          "description": "Healthy restaurant offering vegetarian and vegan options.",
+          "cost": 30,
+          "transportMode": "Metro",
+          "transportCost": 2,
+          "coordinates": {"lat": 41.8994, "lng": 12.4759}
+        }
+      ]
+    },
+    {
+      "day": 4,
+      "date": "2025-05-09",
+      "accommodation": {
+        "name": "Hotel Forum",
+        "description": "Centrally located hotel with comfortable rooms and a rooftop terrace overlooking the city.",
+        "cost": 140,
+        "coordinates": {"lat": 41.8925, "lng": 12.4854}
+      },
+      "activities": [
+        {
+          "time": "Morning",
+          "title": "Trastevere",
+          "description": "Wander through the narrow streets of Trastevere, known for its lively atmosphere, charming cafes, and historic churches.",
+          "cost": 0,
+          "transportMode": "Tram",
+          "transportCost": 2,
+          "coordinates": {"lat": 41.8842, "lng": 12.4672}
+        },
+        {
+          "time": "Afternoon",
+          "title": "Villa Borghese",
+          "description": "Visit Villa Borghese, a beautiful park with stunning gardens, art galleries, and a lake where you can rent a rowboat.",
+          "cost": 20,
+          "transportMode": "Bus",
+          "transportCost": 2,
+          "coordinates": {"lat": 41.9131, "lng": 12.4922}
+        }
+      ],
+      "meals": [
+        {
+          "type": "Lunch",
+          "venue": "Antico Arco",
+          "description": "Gourmet restaurant offering creative Italian cuisine and panoramic views of Rome.",
+          "cost": 50,
+          "transportMode": "Walk",
+          "transportCost": 0,
+          "coordinates": {"lat": 41.887, "lng": 12.4695}
+        },
+        {
+          "type": "Dinner",
+          "venue": "La Taverna dei Fori Imperiali",
+          "description": "Cozy restaurant serving traditional Roman dishes near the Roman Forum.",
+          "cost": 40,
+          "transportMode": "Taxi",
+          "transportCost": 10,
+          "coordinates": {"lat": 41.8925, "lng": 12.4854}
+        }
+      ]
+    },
+    {
+      "day": 5,
+      "date": "2025-05-10",
+      "accommodation": {
+        "name": "Hotel Forum",
+        "description": "Centrally located hotel with comfortable rooms and a rooftop terrace overlooking the city.",
+        "cost": 140,
+        "coordinates": {"lat": 41.8925, "lng": 12.4854}
+      },
+      "activities": [],
+      "meals": [
+        {
+          "type": "Lunch",
+          "venue": "Hostaria Romana",
+          "description": "Traditional restaurant serving Roman specialties since 1907.",
+          "cost": 30,
+          "transportMode": "Metro",
+          "transportCost": 2,
+          "coordinates": {"lat": 41.8983, "lng": 12.4994}
+        }
+      ]
+    }
+  ]
+} 

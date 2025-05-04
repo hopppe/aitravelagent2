@@ -33,17 +33,23 @@ export function sanitizeJSON(content: string): string {
 export function ensureValidCoordinates(itinerary: any): any {
   logger.debug('Validating and fixing coordinates in itinerary');
   
-  // Default backup coordinates for Paris (use as last resort)
-  const defaultCoordinates = { lat: 48.8566, lng: 2.3522 };
+  // Default backup coordinates for Paris (use as last resort) with 6 decimal places
+  const defaultCoordinates = { lat: 48.856614, lng: 2.352222 };
   
   // Helper to validate a single coordinates object
   const isValidCoordinates = (coords: any): boolean => {
+    // Check if coordinates exist, are numbers, and have appropriate precision (6 decimal places)
     return coords && 
            typeof coords === 'object' && 
            typeof coords.lat === 'number' && 
            typeof coords.lng === 'number' &&
            !isNaN(coords.lat) && 
            !isNaN(coords.lng);
+  };
+  
+  // Helper to ensure coordinates have 6 decimal places
+  const ensureSixDecimalPlaces = (coord: number): number => {
+    return parseFloat(coord.toFixed(6));
   };
   
   // If there are no days, nothing to do
@@ -57,6 +63,46 @@ export function ensureValidCoordinates(itinerary: any): any {
   
   // Check each day and activity
   itinerary.days.forEach((day: any, dayIndex: number) => {
+    // First check accommodation coordinates if they exist
+    if (day.accommodation && day.accommodation.coordinates) {
+      if (!isValidCoordinates(day.accommodation.coordinates)) {
+        issuesFound++;
+        logger.warn(`Invalid accommodation coordinates found for day ${dayIndex + 1}`, {
+          coordinates: day.accommodation.coordinates,
+          dayIndex
+        });
+        
+        // Try to fix coordinates
+        if (day.accommodation.coordinates && typeof day.accommodation.coordinates === 'object') {
+          // Try to convert string values to numbers
+          if (typeof day.accommodation.coordinates.lat === 'string') {
+            day.accommodation.coordinates.lat = parseFloat(day.accommodation.coordinates.lat);
+          }
+          if (typeof day.accommodation.coordinates.lng === 'string') {
+            day.accommodation.coordinates.lng = parseFloat(day.accommodation.coordinates.lng);
+          }
+          
+          // If still invalid, use default
+          if (!isValidCoordinates(day.accommodation.coordinates)) {
+            day.accommodation.coordinates = { ...defaultCoordinates };
+          } else {
+            // Ensure 6 decimal places
+            day.accommodation.coordinates.lat = ensureSixDecimalPlaces(day.accommodation.coordinates.lat);
+            day.accommodation.coordinates.lng = ensureSixDecimalPlaces(day.accommodation.coordinates.lng);
+          }
+        } else {
+          day.accommodation.coordinates = { ...defaultCoordinates };
+        }
+        
+        logger.debug(`Fixed accommodation coordinates for day ${dayIndex + 1}`, day.accommodation.coordinates);
+      } else {
+        // Ensure 6 decimal places even for valid coordinates
+        day.accommodation.coordinates.lat = ensureSixDecimalPlaces(day.accommodation.coordinates.lat);
+        day.accommodation.coordinates.lng = ensureSixDecimalPlaces(day.accommodation.coordinates.lng);
+      }
+    }
+    
+    // Check activities coordinates
     if (!day.activities || !Array.isArray(day.activities)) {
       logger.warn(`Day ${dayIndex + 1} has no activities array`);
       return;
@@ -91,6 +137,10 @@ export function ensureValidCoordinates(itinerary: any): any {
           // If still invalid, use default
           if (!isValidCoordinates(activity.coordinates)) {
             activity.coordinates = { ...defaultCoordinates };
+          } else {
+            // Ensure 6 decimal places
+            activity.coordinates.lat = ensureSixDecimalPlaces(activity.coordinates.lat);
+            activity.coordinates.lng = ensureSixDecimalPlaces(activity.coordinates.lng);
           }
         } else {
           // No coordinates or completely invalid, use default
@@ -98,8 +148,58 @@ export function ensureValidCoordinates(itinerary: any): any {
         }
         
         logger.debug(`Fixed coordinates for activity "${activity.title}"`, activity.coordinates);
+      } else {
+        // Ensure 6 decimal places even for valid coordinates
+        activity.coordinates.lat = ensureSixDecimalPlaces(activity.coordinates.lat);
+        activity.coordinates.lng = ensureSixDecimalPlaces(activity.coordinates.lng);
       }
     });
+    
+    // Check meal coordinates if they exist
+    if (day.meals && Array.isArray(day.meals)) {
+      day.meals.forEach((meal: any, mealIndex: number) => {
+        if (!meal || typeof meal !== 'object') {
+          return;
+        }
+        
+        if (!isValidCoordinates(meal.coordinates)) {
+          issuesFound++;
+          logger.warn(`Invalid coordinates found for meal "${meal.venue || 'unknown'}" on day ${dayIndex + 1}`, {
+            coordinates: meal.coordinates,
+            mealIndex,
+            dayIndex
+          });
+          
+          // Try to fix coordinates
+          if (meal.coordinates && typeof meal.coordinates === 'object') {
+            // Convert string values to numbers
+            if (typeof meal.coordinates.lat === 'string') {
+              meal.coordinates.lat = parseFloat(meal.coordinates.lat);
+            }
+            if (typeof meal.coordinates.lng === 'string') {
+              meal.coordinates.lng = parseFloat(meal.coordinates.lng);
+            }
+            
+            // If still invalid, use default
+            if (!isValidCoordinates(meal.coordinates)) {
+              meal.coordinates = { ...defaultCoordinates };
+            } else {
+              // Ensure 6 decimal places
+              meal.coordinates.lat = ensureSixDecimalPlaces(meal.coordinates.lat);
+              meal.coordinates.lng = ensureSixDecimalPlaces(meal.coordinates.lng);
+            }
+          } else {
+            meal.coordinates = { ...defaultCoordinates };
+          }
+          
+          logger.debug(`Fixed coordinates for meal "${meal.venue || 'unknown'}"`, meal.coordinates);
+        } else {
+          // Ensure 6 decimal places even for valid coordinates
+          meal.coordinates.lat = ensureSixDecimalPlaces(meal.coordinates.lat);
+          meal.coordinates.lng = ensureSixDecimalPlaces(meal.coordinates.lng);
+        }
+      });
+    }
   });
   
   if (issuesFound > 0) {
@@ -114,10 +214,7 @@ export function ensureValidCoordinates(itinerary: any): any {
 // Parse and process the OpenAI response from Edge Function
 export async function processItineraryResponse(jobId: string, contentData: any): Promise<boolean> {
   try {
-    logger.info(`Processing itinerary response for job ${jobId}`);
-    
     if (!contentData || !contentData.rawContent) {
-      logger.error(`Invalid response data for job ${jobId}`);
       await updateJobStatus(jobId, 'failed', { 
         error: 'Invalid response data from Supabase edge function' 
       });
@@ -125,113 +222,109 @@ export async function processItineraryResponse(jobId: string, contentData: any):
     }
     
     let itineraryContent = contentData.rawContent;
-    logger.debug(`Content length for job ${jobId}: ${itineraryContent.length} characters`);
     
     // Parse the JSON response with error handling
     try {
-      logger.debug(`Parsing JSON response for job ${jobId}`);
-      
       // Try direct parse first
       let itinerary;
       try {
         itinerary = JSON.parse(itineraryContent);
-        logger.info(`JSON for job ${jobId} parsed successfully on first attempt`);
       } catch (err) {
         const parseError = err as Error;
-        logger.error(`Initial JSON parse failed for job ${jobId}:`, parseError.message);
         
         // First try to extract JSON content from the response
         const jsonMatch = itineraryContent.match(/\{[\s\S]*\}/);
         if (jsonMatch) {
           try {
-            logger.debug(`Attempting to extract JSON from response for job ${jobId}`);
             itinerary = JSON.parse(jsonMatch[0]);
-            logger.info(`JSON extracted and parsed successfully for job ${jobId}`);
           } catch (err2) {
-            const extractError = err2 as Error;
-            logger.error(`Failed to extract valid JSON for job ${jobId}:`, extractError.message);
-            
-            // Try to sanitize the JSON
-            try {
-              logger.debug(`Attempting to sanitize the JSON for job ${jobId}`);
-              const sanitizedJSON = sanitizeJSON(itineraryContent);
-              
-              itinerary = JSON.parse(sanitizedJSON);
-              logger.info(`Sanitized JSON parsed successfully for job ${jobId}`);
-            } catch (err3) {
-              throw parseError; // Fallback to the original error
-            }
+            throw err; // If this fails too, throw the original error
           }
         } else {
-          throw parseError;
+          // Try another approach: sanitize and fix common JSON issues
+          const sanitizedJSON = sanitizeJSON(itineraryContent);
+          try {
+            itinerary = JSON.parse(sanitizedJSON);
+          } catch (err3) {
+            // If all parsing attempts fail, throw with the original error
+            throw err;
+          }
         }
       }
       
       // Quick validation of the itinerary
       if (!itinerary || typeof itinerary !== 'object') {
-        throw new Error('Parsed result is not a valid object');
+        throw new Error('Invalid itinerary structure: not an object');
       }
       
-      // Handle budgetEstimate vs budget naming
+      // Normalize some common field variations
       if (itinerary.budgetEstimate && !itinerary.budget) {
-        logger.info('Converting budgetEstimate to budget for consistency');
+        // Copy budgetEstimate to budget for frontend compatibility
         itinerary.budget = itinerary.budgetEstimate;
       }
       
-      // Handle transportation vs transport naming
       if (itinerary.budget && itinerary.budget.transportation !== undefined && itinerary.budget.transport === undefined) {
-        logger.info('Converting transportation field to transport for consistency');
+        // Copy transportation to transport for frontend compatibility
         itinerary.budget.transport = itinerary.budget.transportation;
       }
       
-      logger.debug(`Validating coordinates for job ${jobId}`);
-      
-      // Ensure coordinates exist for all activities
-      ensureValidCoordinates(itinerary);
-      logger.info(`Coordinates validated successfully for job ${jobId}`);
-      
-      // Update job status with the successful result
-      logger.info(`Updating job ${jobId} status to completed`);
-      await updateJobStatus(jobId, 'completed', { result: { 
-        itinerary,
-        prompt: contentData.prompt, // Include the prompt for reference
-        generatedAt: new Date().toISOString(),
-        rawContent: itineraryContent // Include the raw content for the client to parse directly
-      }});
-      
-      logger.info(`Job ${jobId} completed successfully`);
-      return true;
-    } catch (parseError: any) {
-      logger.error(`JSON parsing error for job ${jobId}:`, {
-        message: parseError.message,
-        stack: parseError.stack?.substring(0, 200)
-      });
-      
-      // Content may be too long to include in logs, write to a debug file in development
-      if (process.env.NODE_ENV === 'development') {
-        try {
-          const fs = require('fs');
-          fs.writeFileSync(`debug-job-${jobId}.txt`, itineraryContent);
-          logger.debug(`Wrote debug content to debug-job-${jobId}.txt`);
-        } catch (fsError) {
-          logger.error(`Failed to write debug file for job ${jobId}:`, fsError);
-        }
+      // Frontend expects itinerary.dates.start and itinerary.dates.end
+      if (!itinerary.dates) {
+        const today = new Date().toISOString().split('T')[0];
+        // Use startDate/endDate from itinerary or create default values to prevent errors
+        const startDate = itinerary.startDate || today;
+        const endDate = itinerary.endDate || today;
+        
+        itinerary.dates = {
+          start: startDate,
+          end: endDate
+        };
       }
       
-      // Update job status to failed
+      if (!itinerary.startDate) itinerary.startDate = itinerary.dates.start;
+      if (!itinerary.endDate) itinerary.endDate = itinerary.dates.end;
+      
+      // Copy title from tripName if available
+      if (!itinerary.title && itinerary.tripName) {
+        itinerary.title = itinerary.tripName;
+      } else if (!itinerary.title) {
+        // Create a default title
+        itinerary.title = `Trip to ${itinerary.destination || 'Destination'}`;
+      }
+      
+      // Copy summary from overview if available
+      if (!itinerary.summary && itinerary.overview) {
+        itinerary.summary = itinerary.overview;
+      } else if (!itinerary.summary) {
+        // Create a default summary
+        itinerary.summary = `Travel itinerary for ${itinerary.destination || 'your destination'}`;
+      }
+      
+      // Fix any missing or invalid coordinates
+      ensureValidCoordinates(itinerary);
+      
+      // Update the job status to completed with the itinerary result
+      await updateJobStatus(jobId, 'completed', {
+        result: {
+          itinerary,
+          processed: true
+        },
+        raw_result: itineraryContent // Store raw content in its own column
+      });
+      
+      return true;
+      
+    } catch (parseError: any) {
       await updateJobStatus(jobId, 'failed', {
         error: `Failed to parse itinerary JSON: ${parseError.message}`
       });
-      
-      logger.info(`Job ${jobId} failed due to JSON parsing error`);
       return false;
     }
+    
   } catch (error: any) {
-    logger.error(`Error processing itinerary job ${jobId}:`, {
-      message: error.message,
-      stack: error.stack?.substring(0, 200)
+    await updateJobStatus(jobId, 'failed', {
+      error: `Error in itinerary processing: ${error.message}`
     });
-    await updateJobStatus(jobId, 'failed', { error: error.message || 'Unknown error' });
     return false;
   }
 }
@@ -258,6 +351,10 @@ export async function processItineraryJob(
     
     // Call OpenAI API directly
     logger.info(`Calling OpenAI API for job ${jobId}`);
+    // Set a reasonable timeout for the OpenAI call
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 60000); // 60 second timeout for longer generations
+    
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -269,18 +366,20 @@ export async function processItineraryJob(
         messages: [
           {
             role: 'system',
-            content: 'You are an expert travel planner. Generate a detailed travel itinerary based on the user\'s preferences. Return your response in a structured JSON format only, with no additional text, explanation, or markdown formatting. Do not wrap the JSON in code blocks. Ensure all property names use double quotes. IMPORTANT: Every activity MUST include a valid "coordinates" object with "lat" and "lng" numerical values - never omit coordinates or use empty objects. For cost fields, always use numerical values (not strings) - costs should be integers or decimals without currency symbols.'
+            content: 'You are an expert travel planner with deep knowledge of destinations worldwide. Generate a personalized travel itinerary based on the user\'s preferences. Return your response in a structured JSON format only, with no additional text, explanation, or markdown formatting. Do not wrap the JSON in code blocks. Ensure all property names use double quotes. Every activity MUST include high-precision "coordinates" with "lat" and "lng" numerical values with exactly 6 decimal places for accuracy (e.g., 40.123456, -74.123456). For cost fields, use numerical values only without currency symbols. For each activity and meal, include a transportMode (Walk, Bus, Metro, Taxi, Train, etc.) and transportCost (0 for walking, 1-3 for public transport, 10-20 for taxis) appropriate to the location. IMPORTANT: Always separate food experiences (restaurants, cafes, food markets) into the "meals" array and non-food activities (sightseeing, museums, etc.) into the "activities" array. Each day should include at least 1-3 meals in the meals array. Never put food experiences in the activities array. Provide a varied schedule with geographic coherence - activities on a given day should make sense location-wise.'
           },
           {
             role: 'user',
             content: prompt
           }
         ],
-        temperature: 0.7,
-        max_tokens: 8000,
-        response_format: { type: 'json_object' },
+        temperature: 0.6,
+        max_tokens: 10000
       }),
+      signal: controller.signal
     });
+
+    clearTimeout(timeoutId);
 
     if (!response.ok) {
       const error = await response.json();

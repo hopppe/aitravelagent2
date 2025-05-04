@@ -18,7 +18,7 @@ function ensureValidCoordinates(itinerary: any) {
   
   // Ensure budget exists and has proper structure
   if (!itinerary.budget || typeof itinerary.budget !== 'object') {
-    console.log('Missing budget object, creating default budget');
+    console.log('Creating budget object from individual costs');
     itinerary.budget = {
       accommodation: 0,
       food: 0,
@@ -27,68 +27,102 @@ function ensureValidCoordinates(itinerary: any) {
       total: 0
     };
     issuesFixed++;
-  } else {
-    // Calculate budget from activities if necessary
-    let totalActivitiesCost = 0;
-    
-    // Ensure all budget properties exist with defaults
-    if (itinerary.budget.accommodation === undefined) {
-      console.log('Missing budget.accommodation, defaulting to 0');
-      itinerary.budget.accommodation = 0;
-      issuesFixed++;
-    }
-    
-    if (itinerary.budget.food === undefined) {
-      console.log('Missing budget.food, defaulting to 0');
-      itinerary.budget.food = 0;
-      issuesFixed++;
-    }
-    
-    // Handle both transportation and transport field names
-    if (itinerary.budget.transportation !== undefined && itinerary.budget.transport === undefined) {
-      console.log('Converting "transportation" field to "transport" for consistency');
-      itinerary.budget.transport = itinerary.budget.transportation;
-    } else if (itinerary.budget.transport === undefined) {
-      console.log('Missing budget.transport, defaulting to 0');
-      itinerary.budget.transport = 0;
-      issuesFixed++;
-    }
-    
-    // Calculate activities cost from actual activities if needed
-    if (itinerary.budget.activities === undefined) {
-      console.log('Missing budget.activities, calculating from activity costs');
-      
-      // Sum up all activity costs
-      for (const day of itinerary.days) {
-        if (day.activities && Array.isArray(day.activities)) {
-          for (const activity of day.activities) {
-            if (activity) {
-              const cost = typeof activity.cost === 'string' 
-                ? isNaN(parseFloat(activity.cost)) ? 0 : parseFloat(activity.cost)
-                : (typeof activity.cost === 'number' ? activity.cost : 0);
-              totalActivitiesCost += cost;
-            }
-          }
+  }
+
+  // Always calculate budget values from actual items
+  console.log('Calculating all budget values from individual costs');
+  
+  // Calculate accommodation costs
+  let totalAccommodationCost = 0;
+  // For accommodation, we need to exclude the last day since accommodation is calculated by nights, not days
+  // For a 4-day trip, there are only 3 nights
+  const lastDayIndex = itinerary.days.length - 1;
+  
+  for (let i = 0; i < itinerary.days.length; i++) {
+    const day = itinerary.days[i];
+    // Only count accommodation costs for days before the last day
+    if (i < lastDayIndex && day.accommodation) {
+      if (typeof day.accommodation.cost === 'number') {
+        totalAccommodationCost += day.accommodation.cost;
+      } else if (day.accommodation.cost) {
+        const cost = parseFloat(String(day.accommodation.cost));
+        if (!isNaN(cost)) {
+          totalAccommodationCost += cost;
         }
       }
-      
-      itinerary.budget.activities = totalActivitiesCost;
-      issuesFixed++;
-    }
-    
-    // Ensure total is present and accurate
-    const calculatedTotal = 
-      itinerary.budget.accommodation + 
-      itinerary.budget.food + 
-      itinerary.budget.activities + 
-      itinerary.budget.transport;
-    
-    if (itinerary.budget.total === undefined || itinerary.budget.total !== calculatedTotal) {
-      console.log(`${itinerary.budget.total === undefined ? 'Missing' : 'Incorrect'} budget.total, updating to calculated total: ${calculatedTotal}`);
-      itinerary.budget.total = calculatedTotal;
-      issuesFixed++;
     }
   }
+  itinerary.budget.accommodation = totalAccommodationCost;
+  
+  // Calculate activities cost
+  let totalActivitiesCost = 0;
+  for (const day of itinerary.days) {
+    if (day.activities && Array.isArray(day.activities)) {
+      for (const activity of day.activities) {
+        if (activity) {
+          const cost = typeof activity.cost === 'string'
+            ? isNaN(parseFloat(activity.cost)) ? 0 : parseFloat(activity.cost)
+            : (typeof activity.cost === 'number' ? activity.cost : 0);
+          totalActivitiesCost += cost;
+        }
+      }
+    }
+  }
+  itinerary.budget.activities = totalActivitiesCost;
+  
+  // Calculate transport costs
+  let totalTransportCost = 0;
+  for (const day of itinerary.days) {
+    // Add transport costs from activities
+    if (day.activities && Array.isArray(day.activities)) {
+      for (const activity of day.activities) {
+        if (activity && activity.transportCost) {
+          const cost = typeof activity.transportCost === 'string'
+            ? isNaN(parseFloat(activity.transportCost)) ? 0 : parseFloat(activity.transportCost)
+            : (typeof activity.transportCost === 'number' ? activity.transportCost : 0);
+          totalTransportCost += cost;
+        }
+      }
+    }
+    
+    // Add transport costs from meals
+    if (day.meals && Array.isArray(day.meals)) {
+      for (const meal of day.meals) {
+        if (meal && meal.transportCost) {
+          const cost = typeof meal.transportCost === 'string'
+            ? isNaN(parseFloat(meal.transportCost)) ? 0 : parseFloat(meal.transportCost)
+            : (typeof meal.transportCost === 'number' ? meal.transportCost : 0);
+          totalTransportCost += cost;
+        }
+      }
+    }
+  }
+  itinerary.budget.transport = totalTransportCost;
+  
+  // Calculate food costs
+  let totalFoodCost = 0;
+  for (const day of itinerary.days) {
+    if (day.meals && Array.isArray(day.meals)) {
+      for (const meal of day.meals) {
+        if (meal) {
+          const cost = typeof meal.cost === 'string'
+            ? isNaN(parseFloat(meal.cost)) ? 0 : parseFloat(meal.cost)
+            : (typeof meal.cost === 'number' ? meal.cost : 0);
+          totalFoodCost += cost;
+        }
+      }
+    }
+  }
+  itinerary.budget.food = totalFoodCost;
+  
+  // Calculate total
+  itinerary.budget.total = 
+    itinerary.budget.accommodation +
+    itinerary.budget.food +
+    itinerary.budget.activities +
+    itinerary.budget.transport;
+    
+  console.log('Budget calculated:', itinerary.budget);
   
   // Check if this is using budgetEstimate instead of budget
   if (itinerary.budgetEstimate && !itinerary.budget) {
@@ -174,6 +208,23 @@ export default function GeneratedTripPage() {
   
   // Use our budget calculator hook to get normalized budget values
   const normalizedBudget = useBudgetCalculator(itinerary);
+
+  // Debug log for accommodation data
+  useEffect(() => {
+    if (itinerary?.days?.[0]?.accommodation) {
+      console.log('Generated Trip - Accommodation:', {
+        name: itinerary.days[0].accommodation.name,
+        coordinates: itinerary.days[0].accommodation.coordinates,
+        cost: itinerary.days[0].accommodation.cost,
+        type: itinerary.days[0].accommodation.type
+      });
+    } else {
+      console.log('Generated Trip - No accommodation data found in first day');
+    }
+    
+    // Also log the budget level for debugging
+    console.log('Generated Trip - Budget Level:', itinerary?.budgetLevel || 'moderate');
+  }, [itinerary]);
 
   useEffect(() => {
     // Try to get the itinerary from localStorage
@@ -331,6 +382,24 @@ export default function GeneratedTripPage() {
           destination={itinerary.destination}
           startDate={itinerary.dates.start}
           endDate={itinerary.dates.end}
+          accommodation={itinerary.days[0]?.accommodation}
+          allAccommodations={itinerary.days
+            .map((day: { accommodation?: any; date?: string }, index: number) => {
+              if (day.accommodation) {
+                console.log(`Day ${index + 1} (${day.date}): Found accommodation ${day.accommodation.name}`);
+                // Add the day information to the accommodation object
+                return {
+                  ...day.accommodation,
+                  // If not already set, determine check-in/check-out status
+                  checkInOut: day.accommodation.checkInOut || 
+                    (index === 0 ? 'check-in' : 
+                     index === itinerary.days.length - 1 ? 'check-out' : 'staying')
+                };
+              }
+              return null;
+            })
+            .filter(Boolean)}
+          budget={itinerary.budgetLevel || 'moderate'}
         />
       </div>
     </div>

@@ -47,7 +47,7 @@ const testData = {
 };
 
 // Similar system message as in the main app
-const systemMessage = 'You are an expert travel planner. Generate a detailed travel itinerary based on the user\'s preferences. Return your response in a structured JSON format only, with no additional text or explanation. Do NOT include any comments in the JSON (like "// More options..."). Your response must be valid, parseable JSON.';
+const systemMessage = 'You are an expert travel planner. Generate a detailed travel itinerary based on the user\'s preferences. Return your response in a structured JSON format only, with no additional text or explanation. Do NOT include any comments in the JSON (like "// More options..."). Your response must be valid, parseable JSON. For each activity and meal, include a transportMode (Walk, Bus, Metro, Taxi, Train, etc.) and transportCost (0 for walking, 1-3 for public transport, 10-20 for taxis). IMPORTANT: Always separate food experiences (restaurants, cafes, food markets) into the "meals" array and non-food activities (sightseeing, museums, etc.) into the "activities" array. Each day should include at least 1-3 meals in the meals array. Never put food experiences in the activities array.';
 
 // Similar prompt as in the main app but simplified
 const userPrompt = `
@@ -74,18 +74,24 @@ Return this as a JSON object with the following structure:
           "description": "Detailed description",
           "location": "Address or area",
           "coordinates": { "lat": 0.0, "lng": 0.0 },
-          "cost": 0
+          "cost": 0,
+          "transportMode": "Walk/Bus/Metro/Taxi",
+          "transportCost": 0
+        }
+      ],
+      "meals": [
+        {
+          "type": "Breakfast/Lunch/Dinner",
+          "venue": "Restaurant name",
+          "description": "Brief description",
+          "cost": 0,
+          "transportMode": "Walk/Bus/Metro/Taxi",
+          "transportCost": 0,
+          "coordinates": { "lat": 0.0, "lng": 0.0 }
         }
       ]
     }
-  ],
-  "budget": {
-    "accommodation": 0,
-    "food": 0,
-    "activities": 0,
-    "transport": 0,
-    "total": 0
-  }
+  ]
 }
 `;
 

@@ -2,6 +2,8 @@ import { logger } from './logger';
 
 type DayType = {
   date?: string;
+  title?: string;
+  summary?: string;
   activities?: Array<{
     id?: string;
     time?: string;
@@ -14,7 +16,33 @@ type DayType = {
     };
     cost?: number;
     image?: string;
+    duration?: string;
+    transportMode?: string;
+    transportCost?: number;
   }>;
+  meals?: Array<{
+    id?: string;
+    type?: string;
+    venue?: string;
+    description?: string;
+    coordinates?: {
+      lat: number;
+      lng: number;
+    };
+    cost?: number;
+    transportMode?: string;
+    transportCost?: number;
+  }>;
+  accommodation?: {
+    id?: string;
+    name?: string;
+    description?: string;
+    coordinates?: {
+      lat: number;
+      lng: number;
+    };
+    cost?: number;
+  };
 };
 
 type ProcessedItinerary = {
@@ -34,6 +62,7 @@ type ProcessedItinerary = {
     total?: number;
   };
   error?: string;
+  travelTips?: string[];
 };
 
 /**
@@ -41,13 +70,7 @@ type ProcessedItinerary = {
  * with validation and normalization of data
  */
 export function processRawResponse(rawResponse: string): ProcessedItinerary {
-  logger.info('Processing raw OpenAI response', { 
-    responseLength: rawResponse?.length || 0,
-    hasResponse: !!rawResponse
-  });
-  
   if (!rawResponse) {
-    logger.error('Received empty response from OpenAI');
     throw new Error('Received empty response from OpenAI');
   }
   
@@ -57,16 +80,12 @@ export function processRawResponse(rawResponse: string): ProcessedItinerary {
     // Clean up any potential markdown formatting
     const cleanedResponse = cleanResponse(rawResponse);
     parsedItinerary = JSON.parse(cleanedResponse);
-    logger.info('Successfully parsed OpenAI response as JSON');
   } catch (error: any) {
-    logger.error('Failed to parse OpenAI response as JSON:', error);
-    logger.debug('Raw response:', rawResponse.substring(0, 200) + '...');
     throw new Error(`Failed to parse OpenAI response: ${error.message}`);
   }
   
   // Process and validate the itinerary
   const processedItinerary = validateAndNormalizeItinerary(parsedItinerary);
-  logger.info('Successfully processed and normalized itinerary data');
   
   return processedItinerary;
 }
@@ -96,7 +115,6 @@ function cleanResponse(response: string): string {
  */
 function validateAndNormalizeItinerary(itinerary: any): ProcessedItinerary {
   if (!itinerary || typeof itinerary !== 'object') {
-    logger.error('Itinerary is not an object', { itinerary });
     throw new Error('Invalid itinerary format: not an object');
   }
   
@@ -127,44 +145,139 @@ function validateAndNormalizeItinerary(itinerary: any): ProcessedItinerary {
       
       const processedDay: DayType = {
         date: day.date || null,
-        activities: []
+        title: day.title || null,
+        summary: day.summary || null,
+        activities: [],
+        meals: [],
       };
       
       // Process activities for this day
-      if (Array.isArray(day.activities)) {
+      if (day.activities && Array.isArray(day.activities)) {
+        processedDay.activities = [];
+        
         for (let j = 0; j < day.activities.length; j++) {
           const activity = day.activities[j];
-          if (!activity || typeof activity !== 'object') continue;
           
-          // Ensure coordinates are valid
-          let coordinates = { lat: 0, lng: 0 };
-          if (activity.coordinates && typeof activity.coordinates === 'object') {
-            coordinates = {
-              lat: parseFloat(String(activity.coordinates.lat)) || 0,
-              lng: parseFloat(String(activity.coordinates.lng)) || 0
-            };
+          if (activity && typeof activity === 'object') {
+            // Ensure coordinates are valid
+            let coordinates = { lat: 0, lng: 0 };
+            if (activity.coordinates && typeof activity.coordinates === 'object') {
+              coordinates = {
+                lat: parseFloat(String(activity.coordinates.lat)) || 0,
+                lng: parseFloat(String(activity.coordinates.lng)) || 0
+              };
+            }
+            
+            // Parse cost as number if it's not already
+            let cost = 0;
+            if (activity.cost !== undefined) {
+              cost = typeof activity.cost === 'number' ? 
+                activity.cost : 
+                parseFloat(String(activity.cost)) || 0;
+            }
+            
+            // Parse transport cost if available
+            let transportCost = 0;
+            if (activity.transportCost !== undefined) {
+              transportCost = typeof activity.transportCost === 'number' ? 
+                activity.transportCost : 
+                parseFloat(String(activity.transportCost)) || 0;
+            }
+            
+            // Add processed activity to the day
+            processedDay.activities.push({
+              id: activity.id || `act-${i}-${j}`,
+              time: activity.time || '',
+              title: activity.title || 'Activity',
+              description: activity.description || '',
+              location: activity.location || '',
+              coordinates,
+              duration: activity.duration || '',
+              cost,
+              transportMode: activity.transportMode || 'Walk',
+              transportCost
+            });
           }
-          
-          // Parse cost as number if it's not already
-          let cost = 0;
-          if (activity.cost !== undefined) {
-            cost = typeof activity.cost === 'number' ? 
-              activity.cost : 
-              parseFloat(String(activity.cost)) || 0;
-          }
-          
-          // Add processed activity to the day
-          processedDay.activities!.push({
-            id: activity.id || `act-${i}-${j}`,
-            time: activity.time || '',
-            title: activity.title || `Activity ${j+1}`,
-            description: activity.description || '',
-            location: activity.location || '',
-            coordinates,
-            cost,
-            image: activity.image || ''
-          });
         }
+      }
+      
+      // Process meals for this day if they exist
+      if (day.meals && Array.isArray(day.meals)) {
+        processedDay.meals = [];
+        
+        for (let j = 0; j < day.meals.length; j++) {
+          const meal = day.meals[j];
+          
+          if (meal && typeof meal === 'object') {
+            // Ensure coordinates are valid
+            let coordinates = { lat: 0, lng: 0 };
+            if (meal.coordinates && typeof meal.coordinates === 'object') {
+              coordinates = {
+                lat: parseFloat(String(meal.coordinates.lat)) || 0,
+                lng: parseFloat(String(meal.coordinates.lng)) || 0
+              };
+            }
+            
+            // Parse cost as number if it's not already
+            let cost = 0;
+            if (meal.cost !== undefined) {
+              cost = typeof meal.cost === 'number' ? 
+                meal.cost : 
+                parseFloat(String(meal.cost)) || 0;
+            }
+            
+            // Parse transport cost if available
+            let transportCost = 0;
+            if (meal.transportCost !== undefined) {
+              transportCost = typeof meal.transportCost === 'number' ? 
+                meal.transportCost : 
+                parseFloat(String(meal.transportCost)) || 0;
+            }
+            
+            // Add processed meal to the day
+            processedDay.meals.push({
+              id: meal.id || `meal-${i}-${j}`,
+              type: meal.type || '',
+              venue: meal.venue || '',
+              description: meal.description || '',
+              coordinates,
+              cost,
+              transportMode: meal.transportMode || 'Walk',
+              transportCost
+            });
+          }
+        }
+      }
+      
+      // Process accommodation for this day
+      if (day.accommodation && typeof day.accommodation === 'object') {
+        const accommodation = day.accommodation;
+        
+        // Ensure coordinates are valid
+        let coordinates = { lat: 0, lng: 0 };
+        if (accommodation.coordinates && typeof accommodation.coordinates === 'object') {
+          coordinates = {
+            lat: parseFloat(String(accommodation.coordinates.lat)) || 0,
+            lng: parseFloat(String(accommodation.coordinates.lng)) || 0
+          };
+        }
+        
+        // Parse cost as number if it's not already
+        let cost = 0;
+        if (accommodation.cost !== undefined) {
+          cost = typeof accommodation.cost === 'number' ? 
+            accommodation.cost : 
+            parseFloat(String(accommodation.cost)) || 0;
+        }
+        
+        // Add processed accommodation to the day
+        processedDay.accommodation = {
+          id: accommodation.id || `acc-${i}`,
+          name: accommodation.name || 'Accommodation',
+          description: accommodation.description || '',
+          coordinates,
+          cost
+        };
       }
       
       validatedItinerary.days!.push(processedDay);
@@ -172,72 +285,63 @@ function validateAndNormalizeItinerary(itinerary: any): ProcessedItinerary {
   }
   
   // Process budget
-  if (itinerary.budget && typeof itinerary.budget === 'object') {
-    const budget = itinerary.budget;
+  // We will calculate all budget values from individual costs
+  let totalAccommodationCost = 0;
+  let totalActivitiesCost = 0;
+  let totalFoodCost = 0;
+  let totalTransportCost = 0;
+  
+  // Calculate costs from individual items
+  if (validatedItinerary.days) {
+    // For accommodation, we need to exclude the last day since we're calculating nights, not days
+    const lastDayIndex = validatedItinerary.days.length - 1;
     
-    // Get budget values and convert to numbers if needed
-    const accommodation = typeof budget.accommodation === 'number' ? 
-      budget.accommodation : 
-      parseFloat(String(budget.accommodation)) || 0;
+    for (let i = 0; i < validatedItinerary.days.length; i++) {
+      const day = validatedItinerary.days[i];
       
-    const food = typeof budget.food === 'number' ? 
-      budget.food : 
-      parseFloat(String(budget.food)) || 0;
+      // Add accommodation costs (only for days except the last one)
+      if (day.accommodation && typeof day.accommodation.cost === 'number' && i < lastDayIndex) {
+        totalAccommodationCost += day.accommodation.cost;
+      }
       
-    const activities = typeof budget.activities === 'number' ? 
-      budget.activities : 
-      parseFloat(String(budget.activities)) || 0;
+      // Add activity costs
+      if (day.activities) {
+        for (const activity of day.activities) {
+          if (typeof activity.cost === 'number') {
+            totalActivitiesCost += activity.cost;
+          }
+          
+          // Add transport costs from activities
+          if (typeof activity.transportCost === 'number') {
+            totalTransportCost += activity.transportCost;
+          }
+        }
+      }
       
-    const transport = typeof budget.transport === 'number' ? 
-      budget.transport : 
-      parseFloat(String(budget.transport)) || 0;
-    
-    // Calculate total from components if not provided
-    let total = typeof budget.total === 'number' ? 
-      budget.total : 
-      parseFloat(String(budget.total)) || 0;
-      
-    // If total is 0 or NaN, calculate from components
-    if (!total || isNaN(total)) {
-      total = accommodation + food + activities + transport;
-    }
-    
-    validatedItinerary.budget = {
-      accommodation,
-      food,
-      activities,
-      transport,
-      total
-    };
-  } else {
-    // If no budget provided, calculate from activities
-    let totalActivityCost = 0;
-    
-    // Sum up all activity costs
-    if (validatedItinerary.days) {
-      for (const day of validatedItinerary.days) {
-        if (day.activities) {
-          for (const activity of day.activities) {
-            if (typeof activity.cost === 'number') {
-              totalActivityCost += activity.cost;
-            }
+      // Add meal costs and transport costs
+      if (day.meals) {
+        for (const meal of day.meals) {
+          if (typeof meal.cost === 'number') {
+            totalFoodCost += meal.cost;
+          }
+          
+          // Add transport costs from meals
+          if (typeof meal.transportCost === 'number') {
+            totalTransportCost += meal.transportCost;
           }
         }
       }
     }
-    
-    // Set a default budget based on activity costs
-    validatedItinerary.budget = {
-      accommodation: Math.round(totalActivityCost * 0.4), // 40% of total for accommodation
-      food: Math.round(totalActivityCost * 0.3), // 30% for food
-      activities: totalActivityCost,
-      transport: Math.round(totalActivityCost * 0.2), // 20% for transport
-      total: totalActivityCost + 
-        Math.round(totalActivityCost * 0.4) + 
-        Math.round(totalActivityCost * 0.3) + 
-        Math.round(totalActivityCost * 0.2)
-    };
   }
+  
+  // Set the budget values
+  validatedItinerary.budget = {
+    accommodation: totalAccommodationCost,
+    food: totalFoodCost,
+    activities: totalActivitiesCost,
+    transport: totalTransportCost,
+    total: totalAccommodationCost + totalFoodCost + totalActivitiesCost + totalTransportCost
+  };
   
   return validatedItinerary;
 } 

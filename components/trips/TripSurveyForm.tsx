@@ -116,16 +116,11 @@ export default function TripSurveyForm() {
   // Submit the form
   const handleSubmit = async () => {
     try {
-      // Remove the test connection step that creates test jobs
       setIsGenerating(true);
       setError(null);
       setErrorDetails(null);
       setJobId(null);
       
-      console.log('Submitting trip form with data:', JSON.stringify(formData, null, 2));
-      
-      // Call the API to generate an itinerary
-      console.log('Calling API to generate itinerary...');
       const response = await fetch('/api/generate-itinerary', {
         method: 'POST',
         headers: {
@@ -134,32 +129,23 @@ export default function TripSurveyForm() {
         body: JSON.stringify(formData),
       });
       
-      console.log('API response status:', response.status);
-      
       // Get the response data first, then check if it's ok
       let data;
       try {
         data = await response.json();
-        console.log('Raw API response:', data);
       } catch (parseError) {
-        console.error('Error parsing API response:', parseError);
         throw new Error('Invalid response format from server');
       }
       
       // Now check if the response was ok
       if (!response.ok) {
-        console.error('API error response:', data);
-        
         // Show more detailed error message if available
         const errorMessage = data.error || 'Failed to generate itinerary';
         throw new Error(errorMessage);
       }
       
-      console.log('Successfully received response from API');
-      
       // Check if the response contains a job ID (background processing)
       if (data.jobId) {
-        console.log('Received job ID:', data.jobId);
         setJobId(data.jobId);
         
         // If job is already completed (for mock data in development)
@@ -172,10 +158,7 @@ export default function TripSurveyForm() {
       }
       
       // Legacy mode: direct itinerary response
-      console.log('Received data structure:', Object.keys(data).join(', '));
-      
       if (!data.itinerary) {
-        console.error('No itinerary data in API response');
         throw new Error('API response missing itinerary data');
       }
       
@@ -183,8 +166,6 @@ export default function TripSurveyForm() {
       handleStoreItineraryAndNavigate(data.itinerary);
       
     } catch (err) {
-      console.error('Error generating itinerary:', err);
-      
       // Display a more user-friendly error message
       let errorMessage = 'An unexpected error occurred';
       let details = '';
@@ -198,17 +179,8 @@ export default function TripSurveyForm() {
           errorMessage = 'Database connection error. Please check your Supabase setup.';
         } else if (message.includes('Failed to fetch') || message.includes('NetworkError')) {
           errorMessage = 'Network error: Please check your internet connection and try again.';
-        } else if (message.includes('timeout')) {
-          errorMessage = 'The request timed out. Our servers might be busy, please try again.';
-        } else if (message.includes('parse')) {
-          errorMessage = 'There was a problem with the response from our server. Please try again.';
-        } else if (message.includes('pattern')) {
-          errorMessage = 'There was a problem with the data format. Please try again with different preferences.';
         } else if (message.includes('itinerary')) {
           errorMessage = 'We had trouble creating your itinerary. Please try again or modify your preferences.';
-        } else {
-          // Use the error message but ensure it's not too technical
-          errorMessage = message;
         }
       }
       
@@ -218,78 +190,64 @@ export default function TripSurveyForm() {
     }
   };
   
-  // Handle job completion from the JobStatusPoller
+  // Handle job completion
   const handleJobComplete = (result: any) => {
-    console.log('Job completed with result:', result);
-    
     try {
-      // Check if we have rawContent from the OpenAI API
-      if (result && result.rawContent) {
-        console.log('Processing raw content from OpenAI');
-        
-        // Try to parse the JSON from the raw content
+      // We might have a raw string that needs parsing
+      let itinerary;
+      
+      if (result.rawContent) {
+        // Try to extract JSON from the raw content string
+        const cleanContent = result.rawContent
+          .replace(/```json/g, '')
+          .replace(/```/g, '')
+          .trim();
+          
         try {
-          // First try direct JSON parse
-          const itinerary = JSON.parse(result.rawContent);
-          
-          // Handle budgetEstimate vs. budget naming
-          if (itinerary.budgetEstimate && !itinerary.budget) {
-            itinerary.budget = itinerary.budgetEstimate;
-            console.log('Copied budgetEstimate to budget for consistency');
-          }
-          
-          // Handle transportation vs. transport naming
-          if (itinerary.budget && itinerary.budget.transportation !== undefined && itinerary.budget.transport === undefined) {
-            itinerary.budget.transport = itinerary.budget.transportation;
-            console.log('Converted transportation field to transport for consistency');
-          }
-          
-          handleStoreItineraryAndNavigate(itinerary);
-          return;
-        } catch (jsonError) {
-          console.error('Error parsing raw JSON:', jsonError);
-          
-          // Try to extract JSON if it's wrapped in other text
-          const jsonMatch = result.rawContent.match(/\{[\s\S]*\}/);
+          // Try to parse the content first
+          itinerary = JSON.parse(cleanContent);
+        } catch (e) {
+          // If direct parsing fails, try to extract JSON from within markdown or other formatting
+          const jsonMatch = cleanContent.match(/\{[\s\S]*\}/);
           if (jsonMatch) {
-            try {
-              const itinerary = JSON.parse(jsonMatch[0]);
-              console.log('Successfully extracted JSON from raw content');
-              handleStoreItineraryAndNavigate(itinerary);
-              return;
-            } catch (extractError) {
-              console.error('Error parsing extracted JSON:', extractError);
-            }
+            itinerary = JSON.parse(jsonMatch[0]);
+          } else {
+            throw new Error('Could not extract JSON from the response');
           }
-          
-          // If all parsing attempts fail, show error
-          setError('Failed to parse the generated itinerary. Please try again.');
-          setErrorDetails('The AI generated an invalid JSON response.');
-          setIsGenerating(false);
-          return;
         }
+      } else if (result.itinerary) {
+        // Already parsed itinerary
+        itinerary = result.itinerary;
+      } else {
+        throw new Error('Invalid response format');
       }
       
-      // Fallback to old format if rawContent is not available
-      if (result && result.itinerary) {
-        handleStoreItineraryAndNavigate(result.itinerary);
-        return;
+      // Apply normalizations for compatibility
+      if (itinerary.budgetEstimate && !itinerary.budget) {
+        itinerary.budget = itinerary.budgetEstimate;
       }
       
-      // If we reach here, something went wrong
-      throw new Error('Invalid result format from job');
+      // Store the itinerary and navigate
+      handleStoreItineraryAndNavigate(itinerary);
+      
     } catch (err) {
-      console.error('Error processing job result:', err);
-      setError('Error processing the generated itinerary');
-      setErrorDetails('Error processing the generated itinerary');
+      // Handle errors in processing job result
+      let errorMessage = 'Error processing the generated itinerary';
+      let details = '';
+      
+      if (err instanceof Error) {
+        details = err.message;
+      }
+      
+      setError(errorMessage);
+      setErrorDetails(details);
       setIsGenerating(false);
     }
   };
   
-  // Handle job errors from the JobStatusPoller
+  // Handle job error
   const handleJobError = (errorMessage: string) => {
-    console.error('Job error:', errorMessage);
-    setError(errorMessage);
+    setError('Generation failed');
     setErrorDetails(errorMessage);
     setIsGenerating(false);
   };
@@ -297,15 +255,10 @@ export default function TripSurveyForm() {
   // Store itinerary and navigate to results page
   const handleStoreItineraryAndNavigate = (itinerary: any) => {
     try {
-      console.log('Saving itinerary to localStorage...');
-      
       // Validate the itinerary data
       if (!itinerary.days || !Array.isArray(itinerary.days)) {
-        console.error('Invalid itinerary structure - days array is missing or not an array');
         throw new Error('Invalid itinerary structure received');
       }
-      
-      console.log(`Itinerary has ${itinerary.days.length} days`);
 
       // Validate and fix coordinates client-side
       let coordinatesFixed = 0;
@@ -345,41 +298,13 @@ export default function TripSurveyForm() {
         }
       }
       
-      if (coordinatesFixed > 0) {
-        console.log(`Fixed ${coordinatesFixed} coordinate issues in the itinerary`);
-      }
-      
-      // Check coordinates after validation
-      if (itinerary.days.length > 0 && itinerary.days[0].activities?.length > 0) {
-        const firstActivity = itinerary.days[0].activities[0];
-        console.log('First activity before storing:', {
-          title: firstActivity.title,
-          hasCoordinates: !!firstActivity.coordinates,
-          coordinates: firstActivity.coordinates ? JSON.stringify(firstActivity.coordinates) : 'none'
-        });
-        
-        // Log all activities coordinates for the first day
-        const missingCoordinates = itinerary.days[0].activities.filter(
-          (activity: any) => !activity.coordinates || 
-          typeof activity.coordinates !== 'object' || 
-          activity.coordinates.lat === undefined || 
-          activity.coordinates.lng === undefined
-        );
-        
-        console.log(`First day has ${missingCoordinates.length} activities with missing coordinates out of ${itinerary.days[0].activities.length} total`);
-      }
-      
       // Store in localStorage
       const itineraryJson = JSON.stringify(itinerary);
-      console.log('Stringified length:', itineraryJson.length);
       localStorage.setItem('generatedItinerary', itineraryJson);
-      console.log('Successfully saved to localStorage');
       
       // Navigate to the generated trip page
-      console.log('Navigating to generated trip page...');
       router.push('/trips/generated-trip');
     } catch (storageError) {
-      console.error('Error saving to localStorage:', storageError);
       throw new Error('Failed to save itinerary data: ' + 
         (storageError instanceof Error ? storageError.message : 'Unknown error'));
     }
@@ -564,27 +489,33 @@ export default function TripSurveyForm() {
   const renderLoadingState = () => {
     if (!isGenerating) return null;
     
-    if (jobId) {
-      return (
-        <JobStatusPoller 
-          jobId={jobId}
-          onComplete={handleJobComplete}
-          onError={handleJobError}
-          pollingInterval={2000} // Poll every 2 seconds
-          maxPolls={60} // Up to 2 minutes (60 * 2s)
-        />
-      );
+    // Calculate trip days based on start and end dates
+    let tripDays = 5; // Default to 5 days if dates are not valid
+    if (formData.startDate && formData.endDate) {
+      const startDate = new Date(formData.startDate);
+      const endDate = new Date(formData.endDate);
+      
+      if (!isNaN(startDate.getTime()) && !isNaN(endDate.getTime())) {
+        // Calculate the difference in days
+        const differenceInTime = endDate.getTime() - startDate.getTime();
+        const differenceInDays = Math.ceil(differenceInTime / (1000 * 3600 * 24)) + 1; // +1 to include the end day
+        
+        if (differenceInDays > 0) {
+          tripDays = differenceInDays;
+        }
+      }
     }
     
-    // Legacy loading spinner if no job ID
+    // Always use the JobStatusPoller component, even before we have a job ID
     return (
-      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-        <div className="bg-white p-6 rounded-lg shadow-lg max-w-md w-full text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
-          <h3 className="text-lg font-medium text-gray-900 mb-2">Generating Your Itinerary</h3>
-          <p className="text-sm text-gray-500">This may take up to a minute...</p>
-        </div>
-      </div>
+      <JobStatusPoller 
+        jobId={jobId || 'pending'} // Use a placeholder jobId if none exists yet
+        onComplete={handleJobComplete}
+        onError={handleJobError}
+        pollingInterval={2000} // Poll every 2 seconds
+        maxPolls={60} // Up to 2 minutes (60 * 2s)
+        tripDays={tripDays}
+      />
     );
   };
 

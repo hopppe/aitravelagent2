@@ -22,20 +22,43 @@ type Location = {
 
 // Activity type with all details
 type Activity = {
-  id: string;
+  id?: string;
   time: string;
   title: string;
   description: string;
-  location: string;
+  location?: string;
   coordinates: Location;
   cost: number | string;
   image?: string;
+};
+
+// Meal type
+type Meal = {
+  id?: string;
+  type: string;
+  venue: string;
+  description: string;
+  cost: number | string;
+  coordinates: Location;
+};
+
+// Accommodation type
+type Accommodation = {
+  id?: string;
+  name: string;
+  description: string;
+  cost: number | string;
+  coordinates: Location;
 };
 
 // Day with activities
 type Day = {
   date: string;
   activities: Activity[];
+  meals?: Meal[];
+  accommodation?: Accommodation;
+  title?: string;
+  summary?: string;
 };
 
 // Props for the map component
@@ -53,6 +76,13 @@ const dayColors = [
   '#1abc9c', // Teal
   '#34495e', // Dark Blue
 ];
+
+// Type icons/scales
+const typeConfig = {
+  activity: { scale: 8 },
+  meal: { scale: 7 },
+  accommodation: { scale: 9 }
+};
 
 // Google Maps API libraries to load
 const libraries: ["places"] = ["places"];
@@ -72,6 +102,34 @@ export default function ItineraryMapView({ days }: ItineraryMapViewProps) {
   const [loadError, setLoadError] = useState<Error | null>(null);
   const mapRef = useRef<HTMLDivElement>(null);
   const [google, setGoogle] = useState<any>(null);
+  const [visibleTypes, setVisibleTypes] = useState({
+    activity: true,
+    meal: true,
+    accommodation: true
+  });
+
+  // Store markers by type for filtering
+  const markersRef = useRef<{
+    activity: google.maps.Marker[];
+    meal: google.maps.Marker[];
+    accommodation: google.maps.Marker[];
+  }>({
+    activity: [],
+    meal: [],
+    accommodation: []
+  });
+
+  // Function to toggle marker visibility by type
+  const toggleMarkerVisibility = (type: 'activity' | 'meal' | 'accommodation') => {
+    const isCurrentlyVisible = visibleTypes[type];
+    setVisibleTypes(prev => ({ ...prev, [type]: !isCurrentlyVisible }));
+    
+    if (markersRef.current[type]) {
+      markersRef.current[type].forEach(marker => {
+        marker.setVisible(!isCurrentlyVisible);
+      });
+    }
+  };
 
   // Load the Google Maps script using our secure API route
   useEffect(() => {
@@ -168,37 +226,68 @@ export default function ItineraryMapView({ days }: ItineraryMapViewProps) {
     };
   }, []);
 
-  // Flatten all activities into a single array
-  const allActivities = days.flatMap(day => day.activities);
+  // Flatten all activities, meals, and accommodations into a single array for the map
+  const allMapItems = React.useMemo(() => days.flatMap(day => {
+    const items = [...day.activities];
+    
+    // Add meals if available
+    if (day.meals && day.meals.length > 0) {
+      items.push(...day.meals.map(meal => ({
+        id: meal.id || `meal-${Math.random().toString(36).substr(2, 9)}`,
+        time: meal.type,
+        title: meal.venue,
+        description: meal.description,
+        location: meal.venue,
+        coordinates: meal.coordinates,
+        cost: meal.cost
+      } as Activity)));
+    }
+    
+    // Add accommodation if available
+    if (day.accommodation) {
+      const acc = day.accommodation;
+      items.push({
+        id: `acc-${Math.random().toString(36).substr(2, 9)}`,
+        time: 'Night',
+        title: acc.name,
+        description: acc.description,
+        location: acc.name,
+        coordinates: acc.coordinates,
+        cost: acc.cost
+      } as Activity);
+    }
+    
+    return items;
+  }), [days]);
   
   // Find center coordinates for the map (average of all points)
   const getCenterCoordinates = useCallback((): google.maps.LatLngLiteral => {
     // Default to center of USA if no activities
-    if (allActivities.length === 0) return { lat: 39.8283, lng: -98.5795 };
+    if (allMapItems.length === 0) return { lat: 39.8283, lng: -98.5795 };
     
     // Filter out invalid coordinates
-    const validActivities = allActivities.filter(
-      activity => activity && 
-      activity.coordinates && 
-      typeof activity.coordinates === 'object' &&
-      activity.coordinates.lat !== undefined && 
-      activity.coordinates.lng !== undefined &&
-      !isNaN(Number(activity.coordinates.lat)) && 
-      !isNaN(Number(activity.coordinates.lng)) &&
-      isFinite(Number(activity.coordinates.lat)) && 
-      isFinite(Number(activity.coordinates.lng))
+    const validItems = allMapItems.filter(
+      item => item && 
+      item.coordinates && 
+      typeof item.coordinates === 'object' &&
+      item.coordinates.lat !== undefined && 
+      item.coordinates.lng !== undefined &&
+      !isNaN(Number(item.coordinates.lat)) && 
+      !isNaN(Number(item.coordinates.lng)) &&
+      isFinite(Number(item.coordinates.lat)) && 
+      isFinite(Number(item.coordinates.lng))
     );
     
-    if (validActivities.length === 0) return { lat: 39.8283, lng: -98.5795 };
+    if (validItems.length === 0) return { lat: 39.8283, lng: -98.5795 };
     
-    const sumLat = validActivities.reduce((sum, activity) => sum + Number(activity.coordinates.lat), 0);
-    const sumLng = validActivities.reduce((sum, activity) => sum + Number(activity.coordinates.lng), 0);
+    const sumLat = validItems.reduce((sum, item) => sum + Number(item.coordinates.lat), 0);
+    const sumLng = validItems.reduce((sum, item) => sum + Number(item.coordinates.lng), 0);
     
     return { 
-      lat: sumLat / validActivities.length, 
-      lng: sumLng / validActivities.length 
+      lat: sumLat / validItems.length, 
+      lng: sumLng / validItems.length 
     };
-  }, [allActivities]);
+  }, [allMapItems]);
 
   // Format date for display
   const formatDate = (dateString: string) => {
@@ -220,7 +309,7 @@ export default function ItineraryMapView({ days }: ItineraryMapViewProps) {
       return (
         <div className="h-full w-full flex justify-center items-center bg-gray-100 rounded-lg">
           <div className="text-center p-4">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-2"></div>
             <p className="text-gray-700">Loading map...</p>
           </div>
         </div>
@@ -231,7 +320,7 @@ export default function ItineraryMapView({ days }: ItineraryMapViewProps) {
       return (
         <div className="h-full w-full flex justify-center items-center bg-gray-100 rounded-lg">
           <div className="text-center p-4">
-            <p className="text-red-500 mb-2">Failed to load Google Maps</p>
+            <p className="text-red-500 font-medium mb-1">Failed to load Google Maps</p>
             <p className="text-gray-700 text-sm">Please check your internet connection and try again.</p>
           </div>
         </div>
@@ -240,19 +329,73 @@ export default function ItineraryMapView({ days }: ItineraryMapViewProps) {
 
     return (
       <div className="h-full relative">
-        <div ref={mapRef} style={{ height: '100%', width: '100%', borderRadius: '0.375rem' }}></div>
+        <div 
+          ref={mapRef} 
+          className="h-full w-full rounded-md"
+          style={{ minHeight: '100%', minWidth: '100%' }}
+        ></div>
         
-        {/* Simple legend */}
-        <div className="absolute bottom-2 left-2 bg-white p-2 rounded-lg shadow-md text-xs max-w-fit">
-          <p className="font-medium mb-1">Trip Days:</p>
-          <div className="space-y-1">
+        {/* Filter box */}
+        <div className="absolute top-2 left-2 bg-white p-2 rounded-lg shadow-md max-w-[180px] bg-opacity-95 text-xs">
+          <p className="font-semibold mb-1 text-gray-800">Show/Hide:</p>
+          <div>
+            <label 
+              htmlFor="filter-activities"
+              className="flex items-center h-8 cursor-pointer px-1 hover:bg-gray-50 rounded-md"
+            >
+              <input 
+                type="checkbox" 
+                id="filter-activities"
+                className="mr-2 h-4 w-4 accent-blue-500" 
+                checked={visibleTypes.activity}
+                onChange={() => toggleMarkerVisibility('activity')}
+              />
+              <span className="font-medium">Activities</span>
+            </label>
+            
+            <label 
+              htmlFor="filter-meals"
+              className="flex items-center h-8 cursor-pointer px-1 hover:bg-gray-50 rounded-md"
+            >
+              <input 
+                type="checkbox" 
+                id="filter-meals"
+                className="mr-2 h-4 w-4 accent-blue-500" 
+                checked={visibleTypes.meal}
+                onChange={() => toggleMarkerVisibility('meal')}
+              />
+              <span className="font-medium">Restaurants</span>
+            </label>
+            
+            <label 
+              htmlFor="filter-accommodation"
+              className="flex items-center h-8 cursor-pointer px-1 hover:bg-gray-50 rounded-md"
+            >
+              <input 
+                type="checkbox" 
+                id="filter-accommodation"
+                className="mr-2 h-4 w-4 accent-blue-500" 
+                checked={visibleTypes.accommodation}
+                onChange={() => toggleMarkerVisibility('accommodation')}
+              />
+              <span className="font-medium">Accommodation</span>
+            </label>
+          </div>
+        </div>
+        
+        {/* Legend */}
+        <div className="absolute bottom-2 right-2 bg-white p-2 rounded-lg shadow-md max-w-[180px] bg-opacity-95 text-xs">
+          <p className="font-semibold mb-1 text-gray-800">Trip Days:</p>
+          <div>
             {days.map((day, index) => (
-              <div key={day.date} className="flex items-center">
+              <div key={day.date} className="flex items-center h-6">
                 <span 
-                  className="inline-block w-3 h-3 rounded-full mr-1"
+                  className="inline-block w-4 h-4 rounded-full mr-2 flex-shrink-0"
                   style={{ backgroundColor: dayColors[index % dayColors.length] }}
                 ></span>
-                <span>Day {index + 1}: {formatDate(day.date)}</span>
+                <span className="font-medium text-gray-700 truncate">
+                  Day {index + 1}: {formatDate(day.date)}
+                </span>
               </div>
             ))}
           </div>
@@ -261,143 +404,292 @@ export default function ItineraryMapView({ days }: ItineraryMapViewProps) {
     );
   };
 
-  // Initialize map once it's loaded
+  // Set up map when Google is loaded
   useEffect(() => {
-    if (isLoaded && google && mapRef.current && !mapInstance) {
-      const map = new google.maps.Map(mapRef.current, {
+    // Return early if not loaded or ref not available
+    if (!isLoaded || !google || !mapRef.current) {
+      return;
+    }
+    
+    // Avoid re-initializing the map on every render
+    // Only initialize it when the required dependencies change
+    const mapId = `map-${days.length}-${isLoaded}-${!!google}`;
+    
+    // Ensure the DOM element is present and accessible
+    const mapElement = mapRef.current;
+    if (!mapElement || !(mapElement instanceof Element)) {
+      console.error('Map element is not a valid DOM element');
+      return;
+    }
+
+    // Clear existing markers before creating new ones
+    Object.values(markersRef.current).forEach(markers => {
+      markers.forEach(marker => {
+        marker.setMap(null);
+      });
+    });
+    
+    // Reset markers
+    markersRef.current = {
+      activity: [],
+      meal: [],
+      accommodation: []
+    };
+    
+    try {
+      // Initialize the map
+      const newMap = new google.maps.Map(mapElement, {
         center: getCenterCoordinates(),
-        zoom: 10,
+        zoom: 8,
         mapTypeControl: false,
         streetViewControl: false,
-        fullscreenControl: false
+        fullscreenControl: true,
+        zoomControl: true,
+        styles: [
+          {
+            featureType: 'poi',
+            elementType: 'labels',
+            stylers: [{ visibility: 'off' }]
+          }
+        ]
       });
       
-      setMapInstance(map);
+      setMapInstance(newMap);
       
       // Check if we have valid coordinates
-      const validActivities = allActivities.filter(
-        activity => activity && 
-        activity.coordinates && 
-        typeof activity.coordinates === 'object' &&
-        activity.coordinates.lat !== undefined && 
-        activity.coordinates.lng !== undefined &&
-        !isNaN(Number(activity.coordinates.lat)) && 
-        !isNaN(Number(activity.coordinates.lng)) &&
-        isFinite(Number(activity.coordinates.lat)) && 
-        isFinite(Number(activity.coordinates.lng))
+      const validActivities = allMapItems.filter(
+         activity => activity && 
+         activity.coordinates && 
+         typeof activity.coordinates === 'object' &&
+         activity.coordinates.lat !== undefined && 
+         activity.coordinates.lng !== undefined
       );
       
-      // Fit bounds to include all markers if we have valid coordinates
-      if (validActivities.length > 0) {
-        const bounds = new google.maps.LatLngBounds();
-        
-        validActivities.forEach(activity => {
-          bounds.extend({
-            lat: Number(activity.coordinates.lat),
-            lng: Number(activity.coordinates.lng)
-          });
-        });
-        
-        map.fitBounds(bounds);
-        
-        // Set a reasonable zoom level if we only have one marker
-        if (validActivities.length === 1) {
-          map.setZoom(14);
-        }
+      if (validActivities.length === 0) {
+        console.log('No valid coordinates found in activities');
+        return;
       }
       
-      // Add markers and polylines for each day
-      days.forEach((day, dayIndex) => {
-        const dayColor = dayColors[dayIndex % dayColors.length];
-        const validDayActivities = day.activities.filter(
-          activity => activity && 
-          activity.coordinates && 
-          typeof activity.coordinates === 'object' &&
-          activity.coordinates.lat !== undefined && 
-          activity.coordinates.lng !== undefined &&
-          !isNaN(Number(activity.coordinates.lat)) && 
-          !isNaN(Number(activity.coordinates.lng)) &&
-          isFinite(Number(activity.coordinates.lat)) && 
-          isFinite(Number(activity.coordinates.lng))
-        );
-        
-        // Add markers
-        const markers: google.maps.Marker[] = [];
-        validDayActivities.forEach((activity, activityIndex) => {
-          const marker = new google.maps.Marker({
-            position: {
-              lat: Number(activity.coordinates.lat),
-              lng: Number(activity.coordinates.lng)
-            },
-            map: map,
-            label: {
-              text: `${activityIndex + 1}`,
-              color: 'white',
-              fontSize: '14px',
-              fontWeight: 'bold'
-            },
-            icon: {
-              path: google.maps.SymbolPath.CIRCLE,
-              fillColor: dayColor,
-              fillOpacity: 1,
-              strokeWeight: 0,
-              scale: 14
-            }
-          });
+      // Track all bounds to auto-fit the map
+      const bounds = new google.maps.LatLngBounds();
+      
+      // Wait for map to be initialized
+      google.maps.event.addListenerOnce(newMap, 'idle', () => {
+        // Create a marker for each activity
+        days.forEach((day, dayIndex) => {
+          // Get color for this day
+          const dayColor = dayColors[dayIndex % dayColors.length];
           
-          // Add click listener for info window
-          marker.addListener('click', () => {
-            // Close any open info window
-            if (window.currentInfoWindow) {
-              window.currentInfoWindow.close();
+          // Create markers for all activities in this day
+          if (day.activities) {
+            day.activities.forEach(activity => {
+              // Skip if no valid coordinates
+              if (!activity.coordinates || 
+                  !isFinite(Number(activity.coordinates.lat)) || 
+                  !isFinite(Number(activity.coordinates.lng))) {
+                return;
+              }
+              
+              // Create marker
+              createMarker(activity, day.date, dayColor, 'activity', newMap, bounds, dayIndex);
+            });
+          }
+          
+          // Add markers for meals if they exist
+          if (day.meals && day.meals.length > 0) {
+            day.meals.forEach(meal => {
+              // Skip if no valid coordinates
+              if (!meal.coordinates || 
+                  !isFinite(Number(meal.coordinates.lat)) || 
+                  !isFinite(Number(meal.coordinates.lng))) {
+                return;
+              }
+              
+              // Create a marker for meals
+              createMarker({
+                id: meal.id || `meal-${Math.random().toString(36).substr(2, 9)}`,
+                time: meal.type,
+                title: meal.venue,
+                description: meal.description,
+                location: meal.venue,
+                coordinates: meal.coordinates,
+                cost: meal.cost
+              }, day.date, dayColor, 'meal', newMap, bounds, dayIndex);
+            });
+          }
+          
+          // Add marker for accommodation if it exists
+          if (day.accommodation) {
+            const acc = day.accommodation;
+            // Skip if no valid coordinates
+            if (!acc.coordinates || 
+                !isFinite(Number(acc.coordinates.lat)) || 
+                !isFinite(Number(acc.coordinates.lng))) {
+              return;
             }
             
-            // Create info window content
-            const content = document.createElement('div');
-            content.className = 'max-w-xs p-2';
-            content.innerHTML = `
-              <h3 class="font-medium text-sm mb-1">${activity.title}</h3>
-              <p class="text-xs text-gray-500 mb-1">${activity.time}</p>
-              <p class="text-xs mb-1">${activity.location}</p>
-            `;
-            
-            // Create and open info window
-            const infoWindow = new google.maps.InfoWindow({
-              content: content
-            });
-            
-            infoWindow.open({
-              anchor: marker,
-              map: map
-            });
-            
-            // Store reference to current info window
-            window.currentInfoWindow = infoWindow;
-            
-            setSelectedActivity(activity);
-          });
-          
-          markers.push(marker);
+            // Create marker for accommodation
+            createMarker({
+              id: `acc-${Math.random().toString(36).substr(2, 9)}`,
+              time: 'Night',
+              title: acc.name,
+              description: acc.description,
+              location: acc.name,
+              coordinates: acc.coordinates,
+              cost: acc.cost
+            }, day.date, dayColor, 'accommodation', newMap, bounds, dayIndex);
+          }
         });
         
-        // Add polyline if we have at least 2 valid activities
-        if (validDayActivities.length >= 2) {
-          const path = validDayActivities.map(activity => ({
-            lat: Number(activity.coordinates.lat),
-            lng: Number(activity.coordinates.lng)
-          }));
+        // Fit map to all markers
+        if (!bounds.isEmpty()) {
+          newMap.fitBounds(bounds);
           
-          new google.maps.Polyline({
-            path: path,
-            map: map,
-            strokeColor: dayColor,
-            strokeWeight: 3,
-            strokeOpacity: 0.7
-          });
+          // Zoom out a bit if we only have one marker
+          if (validActivities.length === 1) {
+            const listener = google.maps.event.addListener(newMap, 'idle', function() {
+              newMap.setZoom(12);
+              google.maps.event.removeListener(listener);
+            });
+          }
         }
       });
+    } catch (e) {
+      console.error('Error initializing map:', e);
+      setError('Error initializing map');
     }
-  }, [isLoaded, google, days, allActivities, getCenterCoordinates]);
+    
+    // The dependency array should only include stable dependencies
+    // Using a string representing the state avoids re-initializing the map on each render
+  }, [isLoaded, google, getCenterCoordinates, mapRef, days]);
+
+  // Create a marker with custom icon and info window
+  const createMarker = (
+    activity: Activity, 
+    dayDate: string, 
+    dayColor: string,
+    itemType: string,
+    map: google.maps.Map,
+    bounds: google.maps.LatLngBounds,
+    dayIndex: number = 0
+  ) => {
+    // Validate coordinates before proceeding
+    if (!activity || 
+        !activity.coordinates || 
+        !isFinite(Number(activity.coordinates.lat)) || 
+        !isFinite(Number(activity.coordinates.lng))) {
+      return null;
+    }
+    
+    const position = {
+      lat: Number(activity.coordinates.lat),
+      lng: Number(activity.coordinates.lng)
+    };
+    
+    // Add to bounds
+    bounds.extend(position);
+    
+    // Use different scale based on marker type, but same color for the day
+    const icon = {
+      path: google.maps.SymbolPath.CIRCLE,
+      fillColor: dayColor,
+      fillOpacity: 1,
+      strokeWeight: 1.5,
+      strokeColor: '#FFFFFF',
+      scale: typeConfig[itemType as keyof typeof typeConfig]?.scale || 8
+    };
+    
+    // Helper function to create a Google Maps link
+    const createGoogleMapsLink = (coordinates: Location, title: string) => {
+      return `https://www.google.com/maps/search/?api=1&query=${coordinates.lat},${coordinates.lng}&query_place_id=${encodeURIComponent(title)}`;
+    };
+    
+    // Create the marker
+    const marker = new google.maps.Marker({
+      position,
+      map,
+      icon,
+      title: activity.title
+    });
+    
+    // Store marker by type for filtering
+    if (itemType === 'activity' || itemType === 'meal' || itemType === 'accommodation') {
+      markersRef.current[itemType].push(marker);
+    }
+    
+    // Create info window content with day information
+    const contentString = `
+      <div class="p-3" style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 220px;">
+        <h3 class="font-bold text-sm mb-1">${activity.title}</h3>
+        <div class="flex items-center mb-1">
+          <span class="inline-block w-3 h-3 rounded-full mr-1" 
+                style="background-color: ${dayColor}"></span>
+          <p class="text-xs text-gray-600">
+            Day ${dayIndex + 1}: ${formatDate(dayDate)} • ${activity.time}
+          </p>
+        </div>
+        <p class="text-xs text-gray-700">${activity.description}</p>
+        ${activity.location ? 
+          `<p class="text-xs text-gray-700 mt-1">
+            <strong class="font-medium">Location:</strong> ${activity.location}
+          </p>` : ''}
+        <a href="${createGoogleMapsLink(activity.coordinates, activity.title)}" 
+           target="_blank" 
+           rel="noopener noreferrer"
+           class="block mt-2 text-xs text-blue-600 hover:text-blue-800 font-medium">
+          View on Google Maps
+        </a>
+      </div>
+    `;
+    
+    // Create info window
+    const infoWindow = new google.maps.InfoWindow({
+      content: contentString,
+      ariaLabel: activity.title,
+      maxWidth: 220
+    });
+    
+    // Add click listener to open info window
+    marker.addListener('click', () => {
+      // Close any open info window first
+      if (window.currentInfoWindow) {
+        window.currentInfoWindow.close();
+      }
+      
+      infoWindow.open({
+        anchor: marker,
+        map,
+      });
+      
+      window.currentInfoWindow = infoWindow;
+      
+      // Set the selected activity
+      if (activity.id) {
+        setSelectedActivity(activity);
+      }
+    });
+    
+    return marker;
+  };
+
+  // Clean up markers when component unmounts or days change
+  useEffect(() => {
+    return () => {
+      // Clear all marker references
+      Object.values(markersRef.current).forEach(markers => {
+        markers.forEach(marker => {
+          marker.setMap(null);
+        });
+      });
+      
+      // Reset markers
+      markersRef.current = {
+        activity: [],
+        meal: [],
+        accommodation: []
+      };
+    };
+  }, [days]);
 
   return renderMap();
 } 
