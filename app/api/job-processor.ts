@@ -385,9 +385,15 @@ export async function processItineraryJob(
     
     // Call OpenAI API directly
     logger.info(`Calling OpenAI API for job ${jobId}`);
+    
     // Set a reasonable timeout for the OpenAI call
+    // Use a longer timeout for production to account for potential network issues
+    const isProduction = process.env.NODE_ENV === 'production';
+    const timeoutDuration = isProduction ? 90000 : 60000; // 90 seconds in production, 60 in development
+    
+    logger.info(`Setting API timeout to ${timeoutDuration}ms for job ${jobId}`);
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 60000); // 60 second timeout for longer generations
+    const timeoutId = setTimeout(() => controller.abort(), timeoutDuration);
     
     try {
       const response = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -409,7 +415,7 @@ export async function processItineraryJob(
             }
           ],
           temperature: 0.6,
-          max_tokens: 10000
+          max_tokens: isProduction ? 12000 : 10000 // Increase max tokens in production for safety
         }),
         signal: controller.signal
       });
@@ -425,6 +431,12 @@ export async function processItineraryJob(
       logger.info(`OpenAI API returned success for job ${jobId}`);
       const openAIData = await response.json();
       const rawContent = openAIData.choices[0].message.content;
+      
+      // Add retry mechanism if response appears to be empty or malformed
+      if (!rawContent || rawContent.trim().length < 10) {
+        logger.warn(`Empty or very short response received for job ${jobId}, failing job`);
+        throw new Error('Empty or invalid response from OpenAI API');
+      }
       
       // Log a small snippet of the response for debugging purposes
       const contentPreview = rawContent.substring(0, 100) + '...';
@@ -449,8 +461,13 @@ export async function processItineraryJob(
       
       // Handle fetch errors
       if (fetchError.name === 'AbortError') {
-        logger.error(`OpenAI API call timed out for job ${jobId}`);
-        throw new Error('OpenAI API call timed out. Try again with a shorter prompt or simpler request.');
+        logger.error(`OpenAI API call timed out for job ${jobId} after ${timeoutDuration}ms`);
+        
+        // Update job status to indicate timeout specifically
+        await updateJobStatus(jobId, 'failed', {
+          error: 'API request timed out. Please try again with a shorter trip duration.'
+        });
+        return false;
       }
       
       logger.error(`Fetch error for job ${jobId}:`, fetchError);

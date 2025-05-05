@@ -32,9 +32,48 @@ const JobStatusPoller: React.FC<JobStatusPollerProps> = ({
   const [notFoundCount, setNotFoundCount] = useState(0);
   const [hasErrored, setHasErrored] = useState(false);
   const [errorDetails, setErrorDetails] = useState<string>('');
+  const [isOffline, setIsOffline] = useState(false);
+  const [currentPollingInterval, setCurrentPollingInterval] = useState(pollingInterval);
   
   // Maximum number of "not found" responses before considering it an error
   const MAX_NOT_FOUND_RETRIES = 20;
+  
+  // Detect if we're on a mobile device to adjust polling behavior
+  const isMobile = typeof navigator !== 'undefined' && 
+    /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+
+  // Add network status monitoring
+  useEffect(() => {
+    const handleOnline = () => {
+      console.log('Network connection restored');
+      setIsOffline(false);
+      // Reset polling to normal interval
+      setCurrentPollingInterval(pollingInterval);
+    };
+    
+    const handleOffline = () => {
+      console.log('Network connection lost');
+      setIsOffline(true);
+      setMessage('Waiting for network connection...');
+    };
+    
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    
+    // Initialize offline status
+    setIsOffline(!navigator.onLine);
+    
+    // On mobile devices, use a slightly longer polling interval
+    if (isMobile) {
+      setCurrentPollingInterval(pollingInterval * 1.5);
+      console.log(`Mobile device detected, adjusted polling interval to ${pollingInterval * 1.5}ms`);
+    }
+    
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, [pollingInterval]);
 
   // Calculate expected time based on trip days (30-60 seconds range)
   const minSeconds = 30;
@@ -43,7 +82,7 @@ const JobStatusPoller: React.FC<JobStatusPollerProps> = ({
   const expectedPolls = Math.min(
     Math.max(minSeconds, tripDays * 5), // 5 seconds per day, minimum 30 seconds
     maxSeconds
-  ) / (pollingInterval / 1000);
+  ) / (currentPollingInterval / 1000);
 
   useEffect(() => {
     if (!jobId) {
@@ -54,6 +93,23 @@ const JobStatusPoller: React.FC<JobStatusPollerProps> = ({
     // If job is completed or failed, or we've exceeded max polls, don't continue polling
     if (isCompleted(status) || isFailed(status) || (pollCount >= maxPolls)) {
       return;
+    }
+    
+    // If device is offline, don't poll but set up a retry timer
+    if (isOffline) {
+      const offlineTimer = setTimeout(() => {
+        // Check again if online
+        if (navigator.onLine) {
+          setIsOffline(false);
+          // Will trigger a new poll
+          setPollCount(prev => prev);
+        } else {
+          // Stay in offline mode and check again later
+          setPollCount(prev => prev);
+        }
+      }, 5000); // Check every 5 seconds in offline mode
+      
+      return () => clearTimeout(offlineTimer);
     }
 
     const pollJobStatus = async () => {
@@ -111,6 +167,12 @@ const JobStatusPoller: React.FC<JobStatusPollerProps> = ({
         setStatus(data.status);
         setDetails(data);
         
+        // If we're on mobile and in the processing state, slightly increase polling interval for efficiency
+        if (isMobile && data.status === 'processing' && currentPollingInterval < pollingInterval * 2) {
+          // Gradually increase polling interval up to 2x the original
+          setCurrentPollingInterval(prevInterval => Math.min(prevInterval * 1.1, pollingInterval * 2));
+        }
+        
         // Handle different status cases
         switch (data.status) {
           case 'completed':
@@ -152,7 +214,14 @@ const JobStatusPoller: React.FC<JobStatusPollerProps> = ({
             break;
             
           case 'processing':
-            setMessage('Creating your personalized travel experience...');
+            // For longer processing times, give more informative messages
+            if (pollCount > 15) {
+              setMessage('Almost there! Creating your personalized travel experience...');
+            } else if (pollCount > 5) {
+              setMessage('Creating your personalized travel experience...');
+            } else {
+              setMessage('Working on your travel itinerary...');
+            }
             break;
             
           case 'queued':
@@ -167,6 +236,14 @@ const JobStatusPoller: React.FC<JobStatusPollerProps> = ({
         setHasErrored(true);
         setErrorDetails(error.message || 'Unknown error');
         
+        // Check if it might be a network error
+        if (error.message?.includes('Failed to fetch') || !navigator.onLine) {
+          setIsOffline(true);
+          setMessage('Connection issue. Waiting for network...');
+          // Don't increment poll count while offline
+          return;
+        }
+        
         // After a certain number of polls with errors, show an error to the user
         if (pollCount > 5) {
           onError(error.message || 'Failed to check job status');
@@ -179,11 +256,11 @@ const JobStatusPoller: React.FC<JobStatusPollerProps> = ({
       setPollCount(prev => prev + 1);
     };
 
-    // Set up polling
-    const timer = setTimeout(pollJobStatus, pollingInterval);
+    // Set up polling with the current interval
+    const timer = setTimeout(pollJobStatus, currentPollingInterval);
     
     return () => clearTimeout(timer);
-  }, [jobId, status, pollCount, maxPolls, pollingInterval, onComplete, onError, notFoundCount, tripDays]);
+  }, [jobId, status, pollCount, maxPolls, currentPollingInterval, onComplete, onError, notFoundCount, tripDays, isOffline]);
 
   // Progress calculation based on expected time for trip days
   // Use a non-linear easing function for smoother animation
@@ -211,6 +288,43 @@ const JobStatusPoller: React.FC<JobStatusPollerProps> = ({
       default: return 'bg-blue-500';
     }
   };
+
+  // If offline, show a network offline message
+  if (isOffline) {
+    return (
+      <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
+        <div className="bg-white p-6 rounded-xl shadow-lg max-w-md w-full">
+          <div className="flex flex-col items-center mb-5">
+            <div className="mb-4">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-16 w-16 text-yellow-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 15a4 4 0 004 4h9a5 5 0 10-4.5-8.5M3 15l4.5-11M13.5 10.5a1.5 1.5 0 11-3 0 1.5 1.5 0 013 0z" />
+              </svg>
+            </div>
+            <h3 className="text-lg font-semibold text-gray-900">Network Connection Lost</h3>
+          </div>
+          
+          <div className="text-center mb-5">
+            <p className="text-md text-gray-700">Waiting for your internet connection to return...</p>
+            <p className="text-sm text-gray-500 mt-1">Your trip is still being generated in the background.</p>
+          </div>
+          
+          <div className="flex justify-center">
+            <button 
+              onClick={() => {
+                if (navigator.onLine) {
+                  setIsOffline(false);
+                  setPollCount(prev => prev); // Force a refresh
+                }
+              }}
+              className="px-4 py-2 bg-blue-600 text-white text-sm rounded-lg font-medium hover:bg-blue-700 transition-colors"
+            >
+              Retry Connection
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   // Only show the progress bar if we're still waiting
   if (isCompleted(status) || isFailed(status)) {
