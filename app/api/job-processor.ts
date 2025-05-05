@@ -216,7 +216,7 @@ export async function processItineraryResponse(jobId: string, contentData: any):
   try {
     if (!contentData || !contentData.rawContent) {
       await updateJobStatus(jobId, 'failed', { 
-        error: 'Invalid response data from Supabase edge function' 
+        error: 'Invalid response data from API' 
       });
       return false;
     }
@@ -257,51 +257,74 @@ export async function processItineraryResponse(jobId: string, contentData: any):
         throw new Error('Invalid itinerary structure: not an object');
       }
       
-      // Normalize some common field variations
+      // Ensure field compatibility with the frontend
+      
+      // For the original format "overview", make sure "summary" is also available
+      if (itinerary.overview && !itinerary.summary) {
+        itinerary.summary = itinerary.overview;
+      } else if (!itinerary.overview && itinerary.summary) {
+        itinerary.overview = itinerary.summary;
+      } else if (!itinerary.overview && !itinerary.summary) {
+        // Create a default if neither exists
+        itinerary.summary = `Travel itinerary for ${itinerary.destination || 'your destination'}`;
+        itinerary.overview = itinerary.summary;
+      }
+      
+      // Make sure "tripName" and "title" are both available
+      if (itinerary.tripName && !itinerary.title) {
+        itinerary.title = itinerary.tripName;
+      } else if (!itinerary.tripName && itinerary.title) {
+        itinerary.tripName = itinerary.title;
+      } else if (!itinerary.tripName && !itinerary.title) {
+        // Create a default if neither exists
+        itinerary.title = `Trip to ${itinerary.destination || 'Destination'}`;
+        itinerary.tripName = itinerary.title;
+      }
+      
+      // Normalize budget information
       if (itinerary.budgetEstimate && !itinerary.budget) {
-        // Copy budgetEstimate to budget for frontend compatibility
         itinerary.budget = itinerary.budgetEstimate;
       }
       
       if (itinerary.budget && itinerary.budget.transportation !== undefined && itinerary.budget.transport === undefined) {
-        // Copy transportation to transport for frontend compatibility
         itinerary.budget.transport = itinerary.budget.transportation;
       }
       
+      // Ensure "budgetLevel" field for consistency
+      if (!itinerary.budgetLevel) {
+        // Try to extract from budget string or default to "moderate"
+        itinerary.budgetLevel = itinerary.budget && typeof itinerary.budget === 'string' ? 
+          itinerary.budget.toLowerCase() : "moderate";
+      }
+      
       // Frontend expects itinerary.dates.start and itinerary.dates.end
+      // But also needs startDate and endDate fields
       if (!itinerary.dates) {
-        const today = new Date().toISOString().split('T')[0];
-        // Use startDate/endDate from itinerary or create default values to prevent errors
-        const startDate = itinerary.startDate || today;
-        const endDate = itinerary.endDate || today;
+        // Use startDate/endDate from itinerary if available
+        const startDate = itinerary.startDate || new Date().toISOString().split('T')[0];
+        const endDate = itinerary.endDate || new Date().toISOString().split('T')[0];
         
         itinerary.dates = {
           start: startDate,
           end: endDate
         };
+      } else {
+        // Ensure startDate and endDate are also available
+        if (!itinerary.startDate) itinerary.startDate = itinerary.dates.start;
+        if (!itinerary.endDate) itinerary.endDate = itinerary.dates.end;
       }
       
-      if (!itinerary.startDate) itinerary.startDate = itinerary.dates.start;
-      if (!itinerary.endDate) itinerary.endDate = itinerary.dates.end;
-      
-      // Copy title from tripName if available
-      if (!itinerary.title && itinerary.tripName) {
-        itinerary.title = itinerary.tripName;
-      } else if (!itinerary.title) {
-        // Create a default title
-        itinerary.title = `Trip to ${itinerary.destination || 'Destination'}`;
+      // Make sure days array exists
+      if (!itinerary.days || !Array.isArray(itinerary.days)) {
+        logger.warn(`Job ${jobId} missing days array, creating empty array`);
+        itinerary.days = [];
       }
-      
-      // Copy summary from overview if available
-      if (!itinerary.summary && itinerary.overview) {
-        itinerary.summary = itinerary.overview;
-      } else if (!itinerary.summary) {
-        // Create a default summary
-        itinerary.summary = `Travel itinerary for ${itinerary.destination || 'your destination'}`;
-      }
-      
+
       // Fix any missing or invalid coordinates
       ensureValidCoordinates(itinerary);
+      
+      // Log the processing result for debugging
+      logger.info(`Successfully processed itinerary for job ${jobId}, updating job status to completed`);
       
       // Update the job status to completed with the itinerary result
       await updateJobStatus(jobId, 'completed', {
@@ -315,6 +338,7 @@ export async function processItineraryResponse(jobId: string, contentData: any):
       return true;
       
     } catch (parseError: any) {
+      logger.error(`Failed to parse itinerary JSON for job ${jobId}:`, parseError);
       await updateJobStatus(jobId, 'failed', {
         error: `Failed to parse itinerary JSON: ${parseError.message}`
       });
@@ -322,6 +346,7 @@ export async function processItineraryResponse(jobId: string, contentData: any):
     }
     
   } catch (error: any) {
+    logger.error(`Error in itinerary processing for job ${jobId}:`, error);
     await updateJobStatus(jobId, 'failed', {
       error: `Error in itinerary processing: ${error.message}`
     });
@@ -337,7 +362,7 @@ export async function processItineraryJob(
   apiKey: string
 ): Promise<boolean> {
   try {
-    logger.info(`Processing itinerary job for job ${jobId}`);
+    logger.info(`Processing itinerary job for job ${jobId} in environment: ${process.env.NODE_ENV || 'unknown'}`);
     
     // Use the provided prompt or generate one using the generator function
     let prompt: string;
@@ -349,61 +374,100 @@ export async function processItineraryJob(
       logger.debug(`Using pre-formulated prompt for job ${jobId}, length: ${prompt.length} characters`);
     }
     
+    // Update job status to processing if not already
+    try {
+      await updateJobStatus(jobId, 'processing', { prompt });
+      logger.info(`Updated job ${jobId} status to processing`);
+    } catch (updateError) {
+      logger.warn(`Failed to update job ${jobId} status to processing: ${updateError}`);
+      // Continue processing even if we couldn't update status
+    }
+    
     // Call OpenAI API directly
     logger.info(`Calling OpenAI API for job ${jobId}`);
     // Set a reasonable timeout for the OpenAI call
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 60000); // 60 second timeout for longer generations
     
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model: 'gpt-3.5-turbo-16k',
-        messages: [
-          {
-            role: 'system',
-            content: 'You are an expert travel planner with deep knowledge of destinations worldwide. Generate a personalized travel itinerary based on the user\'s preferences. Return your response in a structured JSON format only, with no additional text, explanation, or markdown formatting. Do not wrap the JSON in code blocks. Ensure all property names use double quotes. Every activity MUST include high-precision "coordinates" with "lat" and "lng" numerical values with exactly 6 decimal places for accuracy (e.g., 40.123456, -74.123456). For cost fields, use numerical values only without currency symbols. For each activity and meal, include a transportMode (Walk, Bus, Metro, Taxi, Train, etc.) and transportCost (0 for walking, 1-3 for public transport, 10-20 for taxis) appropriate to the location. IMPORTANT: Always separate food experiences (restaurants, cafes, food markets) into the "meals" array and non-food activities (sightseeing, museums, etc.) into the "activities" array. Each day should include at least 1-3 meals in the meals array. Never put food experiences in the activities array. Provide a varied schedule with geographic coherence - activities on a given day should make sense location-wise.'
-          },
-          {
-            role: 'user',
-            content: prompt
-          }
-        ],
-        temperature: 0.6,
-        max_tokens: 10000
-      }),
-      signal: controller.signal
-    });
+    try {
+      const response = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model: 'gpt-3.5-turbo-16k',
+          messages: [
+            {
+              role: 'system',
+              content: 'You are an expert travel planner with deep knowledge of destinations worldwide. Generate a personalized travel itinerary based on the user\'s preferences. Return your response in a structured JSON format only, with no additional text, explanation, or markdown formatting. Do not wrap the JSON in code blocks. Ensure all property names use double quotes. Every activity MUST include high-precision "coordinates" with "lat" and "lng" numerical values with exactly 6 decimal places for accuracy (e.g., 40.123456, -74.123456). For cost fields, use numerical values only without currency symbols. For each activity and meal, include a transportMode (Walk, Bus, Metro, Taxi, Train, etc.) and transportCost (0 for walking, 1-3 for public transport, 10-20 for taxis) appropriate to the location. IMPORTANT: Always separate food experiences (restaurants, cafes, food markets) into the "meals" array and non-food activities (sightseeing, museums, etc.) into the "activities" array. Each day should include at least 1-3 meals in the meals array. Never put food experiences in the activities array. Provide a varied schedule with geographic coherence - activities on a given day should make sense location-wise.'
+            },
+            {
+              role: 'user',
+              content: prompt
+            }
+          ],
+          temperature: 0.6,
+          max_tokens: 10000
+        }),
+        signal: controller.signal
+      });
 
-    clearTimeout(timeoutId);
+      clearTimeout(timeoutId);
 
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(`OpenAI API error: ${error.error?.message || 'Unknown error'}`);
+      if (!response.ok) {
+        const error = await response.json();
+        logger.error(`OpenAI API error for job ${jobId}:`, error);
+        throw new Error(`OpenAI API error: ${error.error?.message || 'Unknown error'}`);
+      }
+
+      logger.info(`OpenAI API returned success for job ${jobId}`);
+      const openAIData = await response.json();
+      const rawContent = openAIData.choices[0].message.content;
+      
+      // Log a small snippet of the response for debugging purposes
+      const contentPreview = rawContent.substring(0, 100) + '...';
+      logger.info(`Received OpenAI response for job ${jobId}, preview: ${contentPreview}`);
+      
+      // Process the raw response
+      logger.info(`Processing response for job ${jobId}`);
+      const processingResult = await processItineraryResponse(jobId, { 
+        rawContent, 
+        prompt,
+        usage: openAIData.usage
+      });
+      
+      if (!processingResult) {
+        throw new Error(`Failed to process itinerary response for job ${jobId}`);
+      }
+      
+      logger.info(`Successfully completed job ${jobId}`);
+      return true;
+    } catch (fetchError: any) {
+      clearTimeout(timeoutId);
+      
+      // Handle fetch errors
+      if (fetchError.name === 'AbortError') {
+        logger.error(`OpenAI API call timed out for job ${jobId}`);
+        throw new Error('OpenAI API call timed out. Try again with a shorter prompt or simpler request.');
+      }
+      
+      logger.error(`Fetch error for job ${jobId}:`, fetchError);
+      throw fetchError;
     }
-
-    const openAIData = await response.json();
-    const rawContent = openAIData.choices[0].message.content;
-    
-    // Process the raw response
-    await processItineraryResponse(jobId, { 
-      rawContent, 
-      prompt,
-      usage: openAIData.usage
-    });
-    
-    return true;
   } catch (error: any) {
     logger.error(`Failed to process itinerary job ${jobId}:`, error);
     
     // Update job status to failed
-    await updateJobStatus(jobId, 'failed', {
-      error: `OpenAI API error: ${error.message || 'Unknown error'}`
-    });
+    try {
+      await updateJobStatus(jobId, 'failed', {
+        error: `OpenAI API error: ${error.message || 'Unknown error'}`
+      });
+      logger.info(`Updated job ${jobId} status to failed`);
+    } catch (updateError: any) {
+      logger.error(`Failed to update job ${jobId} status to failed: ${updateError}`);
+    }
     
     return false;
   }

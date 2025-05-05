@@ -58,6 +58,7 @@ const JobStatusPoller: React.FC<JobStatusPollerProps> = ({
 
     const pollJobStatus = async () => {
       try {
+        console.log(`Polling job status for ${jobId} (attempt ${pollCount + 1})`);
         const response = await fetch(`/api/job-status?jobId=${jobId}`);
         
         if (!response.ok) {
@@ -75,9 +76,12 @@ const JobStatusPoller: React.FC<JobStatusPollerProps> = ({
             const newNotFoundCount = notFoundCount + 1;
             setNotFoundCount(newNotFoundCount);
             
+            console.log(`Job ${jobId} not found (attempt ${newNotFoundCount}/${MAX_NOT_FOUND_RETRIES})`);
+            
             // Only throw an error if we've exceeded max retries for not found
             if (newNotFoundCount >= MAX_NOT_FOUND_RETRIES) {
               const errMsg = `Job ${jobId} not found after ${MAX_NOT_FOUND_RETRIES} attempts.`;
+              console.error(errMsg);
               setErrorDetails(errMsg);
               throw new Error(errMsg);
             } else {
@@ -101,6 +105,7 @@ const JobStatusPoller: React.FC<JobStatusPollerProps> = ({
         if (notFoundCount > 0) setNotFoundCount(0);
         
         const data: JobData = await response.json();
+        console.log(`Job ${jobId} status: ${data.status}`);
         
         // Update state with the job status data
         setStatus(data.status);
@@ -109,24 +114,29 @@ const JobStatusPoller: React.FC<JobStatusPollerProps> = ({
         // Handle different status cases
         switch (data.status) {
           case 'completed':
+            console.log(`Job ${jobId} completed, processing result`);
             if (data.result?.rawContent) {
               // The result has the raw content from OpenAI - client will parse
               onComplete(data.result);
             } else if (data.result?.itinerary) {
               // Legacy format with parsed itinerary
+              console.log(`Job ${jobId} has parsed itinerary result`);
               onComplete(data.result);
             } else if (data.raw_result) {
               // Try to parse the raw_result directly
+              console.log(`Job ${jobId} has raw_result, parsing now`);
               try {
                 // Set the raw content directly for the client to parse
                 onComplete({ rawContent: data.raw_result });
               } catch (parseError) {
+                console.error(`Error parsing raw_result for job ${jobId}:`, parseError);
                 const errMsg = 'Failed to parse job result';
                 setErrorDetails(errMsg);
                 onError(errMsg);
               }
             } else {
               // No recognizable result format
+              console.error(`Job ${jobId} marked as completed but has no result`);
               const errMsg = 'Completed job has no valid result format';
               setErrorDetails(errMsg);
               onError(errMsg);
@@ -134,6 +144,7 @@ const JobStatusPoller: React.FC<JobStatusPollerProps> = ({
             break;
             
           case 'failed':
+            console.error(`Job ${jobId} failed:`, data.error);
             const errMsg = data.error || 'Job failed';
             setErrorDetails(errMsg);
             onError(errMsg);
@@ -152,6 +163,7 @@ const JobStatusPoller: React.FC<JobStatusPollerProps> = ({
             setMessage(`Planning your perfect adventure...`);
         }
       } catch (error: any) {
+        console.error(`Error polling job ${jobId}:`, error);
         setHasErrored(true);
         setErrorDetails(error.message || 'Unknown error');
         

@@ -173,7 +173,7 @@ export async function POST(request: Request) {
 
     // Process the itinerary job directly (the API call will happen in the background)
     // This allows us to return a response to the client quickly
-    void processItineraryJob(
+    processItineraryJob(
       jobId,
       surveyData,
       prompt,
@@ -186,6 +186,9 @@ export async function POST(request: Request) {
       }
     }).catch(error => {
       logger.error(`Error in background job processing for job ${jobId}:`, error);
+      // Make sure to update the job status even in case of error
+      updateJobStatus(jobId, 'failed', { error: error.message || 'Unknown error' })
+        .catch(updateErr => logger.error(`Failed to update job status on error: ${updateErr.message}`));
     });
 
     // Return immediately with the job ID
@@ -294,8 +297,6 @@ IMPORTANT GUIDELINES:
 2. All coordinates must be precise numeric values with exactly 6 decimal places for accuracy (e.g., 40.123456, -74.123456)
 3. All costs must be numbers
 4. Include both activities AND meals in each day:
-   - Activities should be non-food experiences (sightseeing, museums, shopping, etc.)
-   - Meals should be food experiences (restaurants, cafes, food markets, etc.)
    - Do NOT put food experiences in the activities array
    - Always include 1-3 meals per day in the meals array
 5. Provide precise, real-world locations that exist
@@ -303,7 +304,7 @@ IMPORTANT GUIDELINES:
 7. Include accurate transportMode and transportCost for each activity and meal${surveyData.preferences.includes('food') ? '\n8. Since the traveler likes food, emphasize quality dining experiences in the meals section. If an experience involves food next to a meal time, dont add a meal as well' : ''}`;
 }
 
-// Format date for display
+// Helper function to format dates in a nicer way
 function formatDate(date: Date): string {
   const months = [
     'January', 'February', 'March', 'April', 'May', 'June',
@@ -321,4 +322,4 @@ function formatDate(date: Date): string {
   else if (day === 3 || day === 23) suffix = 'rd';
   
   return `${month} ${day}${suffix}, ${year}`;
-} 
+}
