@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server';
-import { generateJobId, processItineraryResponse, processItineraryJob } from '../job-processor';
-import { createJob, updateJobStatus, getJobStatus, supabase } from '../../../lib/supabase';
 import { createLogger } from '../../../lib/logger';
+import { validateItineraryStructure } from '../../../lib/itinerary-validator';
 
 // Initialize logger
 const logger = createLogger('generate-itinerary');
@@ -10,209 +9,162 @@ const logger = createLogger('generate-itinerary');
 export const runtime = 'nodejs';
 export const maxDuration = 60; // Set max duration to 60 seconds
 
-// Check if Supabase is properly configured
-const isSupabaseConfigured = Boolean(
-  process.env.NEXT_PUBLIC_SUPABASE_URL && 
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-);
-
-// Check if OpenAI API key is configured
-const isOpenAIConfigured = Boolean(process.env.OPENAI_API_KEY);
-
-// Survey data type
-type SurveyData = {
-  destination: string;
-  startDate: string;
-  endDate: string;
-  purpose: string;
-  budget: string;
-  preferences: string[];
-};
-
 export async function POST(request: Request) {
   try {
-    // Log key information for debugging
-    logger.info(`========== ITINERARY GENERATION REQUEST ==========`);
-    logger.info(`API Request started: ${new Date().toISOString()}`);
-    logger.info('Environment:', {
-      nodeEnv: process.env.NODE_ENV,
-    });
+    // Parse the request body
+    const formData = await request.json();
     
-    // Log environment variables (without exposing actual values)
-    logger.info('Supabase connection details:', {
-      hasSupabaseUrl: !!process.env.NEXT_PUBLIC_SUPABASE_URL,
-      hasSupabaseKey: !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
-      urlPrefix: process.env.NEXT_PUBLIC_SUPABASE_URL?.substring(0, 10) || 'missing',
-      keyPrefix: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.substring(0, 5) || 'missing',
-      urlLength: process.env.NEXT_PUBLIC_SUPABASE_URL?.length || 0,
-      keyLength: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.length || 0
-    });
-
-    // Log OpenAI configuration
-    logger.info('OpenAI API configuration:', {
-      hasApiKey: isOpenAIConfigured,
-      keyPrefix: process.env.OPENAI_API_KEY?.substring(0, 5) || 'missing',
-      keyLength: process.env.OPENAI_API_KEY?.length || 0
-    });
-
-    // Only test Supabase connection if properly configured
-    if (isSupabaseConfigured) {
-      try {
-        logger.info('Testing Supabase connection...');
-        const { data, error } = await supabase.from('jobs').select('*').limit(1);
-        if (error) {
-          logger.error('❌ Supabase connection test failed:', {
-            message: error.message,
-            hint: error.hint || '',
-            code: error.code || ''
-          });
-        } else {
-          logger.info('✅ Supabase connection test successful');
-        }
-      } catch (connError: any) {
-        logger.error('❌ Supabase connection test exception:', {
-          message: connError.message,
-          details: connError.toString(),
-          name: connError.name,
-          stack: connError.stack?.substring(0, 200)
-        });
-      }
-    } else {
-      logger.warn('⚠️ Skipping Supabase connection test - not configured');
+    if (!formData) {
+      return NextResponse.json(
+        { error: 'Missing form data' },
+        { status: 400 }
+      );
     }
-
+    
+    logger.info(`Generating itinerary for ${formData.destination}`);
+    
     // Validate OpenAI API key
-    if (!isOpenAIConfigured) {
-      logger.error('❌ OpenAI API key not configured');
+    const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
+    
+    if (!OPENAI_API_KEY) {
+      logger.error('OpenAI API key not configured');
       return NextResponse.json(
         { error: 'OpenAI API key not configured' },
         { status: 500 }
       );
     }
-
-    // Parse the request body
-    const surveyData: SurveyData = await request.json();
-    logger.info('Received survey data:', {
-      destination: surveyData.destination,
-      startDate: surveyData.startDate,
-      endDate: surveyData.endDate,
-      purpose: surveyData.purpose,
-      budget: surveyData.budget,
-      preferences: surveyData.preferences 
-    });
-
-    // Create a unique job ID - use a consistent format for all environments
-    const jobId = generateJobId();
-    logger.info(`Generated new job ID: ${jobId}`);
-
-    // Generate the prompt on the server side
-    const prompt = generatePrompt(surveyData);
-    logger.info(`Generated prompt for job ${jobId}, length: ${prompt.length} characters`);
-
-    // Create a new job in Supabase
-    logger.info('Creating new job with ID:', jobId);
-    let jobCreated = false;
-    let retryCount = 0;
-    const maxRetries = 3;
     
-    // Add retry logic for job creation
-    while (!jobCreated && retryCount < maxRetries) {
-      try {
-        jobCreated = await createJob(jobId);
-        if (!jobCreated) {
-          logger.error(`Failed to create job on attempt ${retryCount + 1}/${maxRetries}`);
-          retryCount++;
-          if (retryCount < maxRetries) {
-            // Exponential backoff
-            await new Promise(resolve => setTimeout(resolve, 500 * Math.pow(2, retryCount)));
-          }
-        }
-      } catch (error) {
-        logger.error(`Error creating job on attempt ${retryCount + 1}/${maxRetries}:`, error);
-        retryCount++;
-        if (retryCount < maxRetries) {
-          // Exponential backoff
-          await new Promise(resolve => setTimeout(resolve, 500 * Math.pow(2, retryCount)));
-        }
-      }
+    // Check trip duration
+    const startDate = new Date(formData.startDate);
+    const endDate = new Date(formData.endDate);
+    const tripDays = Math.ceil(((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24))) + 1;
+    
+    if (tripDays > 14) {
+      logger.warn(`Request for very long trip (${tripDays} days) might exceed token limits`);
+      return NextResponse.json(
+        { error: 'Trip is too long. Please limit your trip to a maximum of 14 days.' },
+        { status: 400 }
+      );
     }
     
-    if (!jobCreated) {
-      logger.error('Failed to create job after multiple attempts');
+    // Generate prompt
+    const prompt = generatePrompt(formData);
+    
+    // Call OpenAI API
+    try {
+      logger.info('Calling OpenAI API');
+      
+      const response = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${OPENAI_API_KEY}`,
+        },
+        body: JSON.stringify({
+          model: 'gpt-4o',
+          messages: [
+            {
+              role: 'system',
+              content: 'You are an expert travel planner with deep knowledge of destinations worldwide. Generate a personalized travel itinerary based on the user\'s preferences. Return your response in a structured JSON format only, with no additional text. Ensure all property names use double quotes. Every location MUST include high-precision "coordinates" with "lat" and "lng" numerical values with exactly 6 decimal places for accuracy. For cost fields, use numerical values only without currency symbols. Consider the typical weather for the destination at the time of the trip and include appropriate recommendations, with at least one travel tip specifically about the weather.'
+            },
+            {
+              role: 'user',
+              content: prompt
+            }
+          ],
+          temperature: 0.7,
+          max_tokens: 10000
+        }),
+      });
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        logger.error(`OpenAI API error: ${response.status} - ${errorText}`);
+        return NextResponse.json(
+          { error: `OpenAI API error: ${response.status}` },
+          { status: 500 }
+        );
+      }
+      
+      const openAIData = await response.json();
+      const rawContent = openAIData.choices[0]?.message?.content;
+      
+      if (!rawContent) {
+        logger.error('No content in OpenAI response');
+        return NextResponse.json(
+          { error: 'No content in OpenAI response' },
+          { status: 500 }
+        );
+      }
+      
+      // Process the response
+      try {
+        // Try to parse the raw content as JSON
+        const itinerary = JSON.parse(rawContent);
+        logger.info('Successfully parsed AI response as JSON');
+        
+        // Validate and structure the response before returning
+        const structuredItinerary = validateItineraryStructure(itinerary, formData);
+        
+        // Store the prompt in localStorage separately
+        return NextResponse.json({ 
+          success: true, 
+          itinerary: structuredItinerary,
+          prompt: prompt // Include the prompt separately in the response
+        });
+        
+      } catch (parseError) {
+        logger.error('Error parsing AI response');
+        
+        // Try to extract JSON if the content includes non-JSON text
+        try {
+          const jsonMatch = rawContent.match(/\{[\s\S]*\}/);
+          if (jsonMatch) {
+            const itinerary = JSON.parse(jsonMatch[0]);
+            logger.info('Successfully extracted and parsed JSON from AI response');
+            
+            // Validate the extracted JSON too
+            const structuredItinerary = validateItineraryStructure(itinerary, formData);
+            
+            // Store the prompt in localStorage separately
+            return NextResponse.json({ 
+              success: true, 
+              itinerary: structuredItinerary,
+              prompt: prompt // Include the prompt separately in the response
+            });
+          } else {
+            throw new Error('Could not extract valid JSON from the response');
+          }
+        } catch (extractError) {
+          logger.error('Failed to extract JSON');
+          return NextResponse.json(
+            { error: 'Failed to parse the generated itinerary' },
+            { status: 500 }
+          );
+        }
+      }
+    } catch (openAIError: any) {
+      logger.error(`Error calling OpenAI API: ${openAIError.message}`);
       return NextResponse.json(
-        { error: 'Failed to create job in database after multiple attempts' },
+        { error: `Error generating itinerary: ${openAIError.message}` },
         { status: 500 }
       );
     }
     
-    logger.info(`Job ${jobId} created successfully, current status: queued`);
-
-    // Verify the job was created properly by fetching its status
-    let statusCheck;
-    try {
-      statusCheck = await getJobStatus(jobId);
-      logger.info(`Initial job status check: ${statusCheck.status}`);
-      
-      if (statusCheck.status === 'not_found') {
-        logger.error(`Critical error: Job ${jobId} was not found immediately after creation`);
-        // Try to recreate the job one more time in case of race condition
-        jobCreated = await createJob(jobId);
-        if (jobCreated) {
-          logger.info(`Job ${jobId} recreated successfully after initial not_found status`);
-          statusCheck = await getJobStatus(jobId);
-          logger.info(`Second job status check: ${statusCheck.status}`);
-        }
-      }
-    } catch (statusCheckError) {
-      logger.error('Error checking initial job status:', statusCheckError);
-    }
-
-    // Update job to processing state and store the prompt
-    await updateJobStatus(jobId, 'processing', { prompt });
-    logger.info(`Job ${jobId} status updated to processing with prompt stored`);
-
-    // Process the itinerary job directly (the API call will happen in the background)
-    // This allows us to return a response to the client quickly
-    processItineraryJob(
-      jobId,
-      surveyData,
-      prompt,
-      process.env.OPENAI_API_KEY || ''
-    ).then(success => {
-      if (success) {
-        logger.info(`Background job processing completed successfully for job ${jobId}`);
-      } else {
-        logger.error(`Background job processing failed for job ${jobId}`);
-      }
-    }).catch(error => {
-      logger.error(`Error in background job processing for job ${jobId}:`, error);
-      // Make sure to update the job status even in case of error
-      updateJobStatus(jobId, 'failed', { error: error.message || 'Unknown error' })
-        .catch(updateErr => logger.error(`Failed to update job status on error: ${updateErr.message}`));
-    });
-
-    // Return immediately with the job ID
-    logger.info(`Returning response for job ${jobId} with status: processing`);
-    return NextResponse.json({ 
-      jobId, 
-      status: 'processing',
-      message: 'Your itinerary is being generated. Poll the job-status endpoint for updates.'
-    });
-    
   } catch (error: any) {
-    logger.error('Error initiating itinerary generation:', error);
+    logger.error(`Server error: ${error.message}`);
     return NextResponse.json(
-      { error: `Failed to initiate itinerary generation: ${error.message || 'Unknown error'}` },
+      { error: `Server error: ${error.message}` },
       { status: 500 }
     );
   }
 }
 
 // Function to generate a prompt based on survey data
-export function generatePrompt(surveyData: SurveyData): string {
+function generatePrompt(formData: any): string {
   // Calculate trip duration - adding 1 to include both start and end date
-  const startDate = new Date(surveyData.startDate);
-  const endDate = new Date(surveyData.endDate);
+  const startDate = new Date(formData.startDate);
+  const endDate = new Date(formData.endDate);
   
   // Set time to noon to avoid timezone issues
   startDate.setHours(12, 0, 0, 0);
@@ -227,7 +179,7 @@ export function generatePrompt(surveyData: SurveyData): string {
   
   // Determine budget guidelines based on selected budget
   let budgetGuidelines = '';
-  switch(surveyData.budget.toLowerCase()) {
+  switch(formData.budget.toLowerCase()) {
     case 'budget':
       budgetGuidelines = 'Include hostels, street food, free/low-cost activities';
       break;
@@ -241,21 +193,21 @@ export function generatePrompt(surveyData: SurveyData): string {
       budgetGuidelines = 'Include a mix of options appropriate for a moderate budget';
   }
 
-  // Construct the prompt with improved flexibility
+  // Construct the prompt
   return `
-Create a travel itinerary for ${surveyData.destination} from ${formattedStartDate} to ${formattedEndDate} (${tripDuration} days).
+Create a travel itinerary for ${formData.destination} from ${formattedStartDate} to ${formattedEndDate} (${tripDuration} days).
 
-Tailor this itinerary for the traveler. Their purpose of the trip is ${surveyData.purpose}. Their budget is ${surveyData.budget} (${budgetGuidelines}). ${surveyData.preferences && surveyData.preferences.length > 0 ? `They like ${surveyData.preferences.join(', ')}, so include more of those activities, unless it is food then just include regular tourist activities.` : ''}
+Tailor this itinerary for the traveler. Their purpose of the trip is ${formData.purpose}. Their budget is ${formData.budget} (${budgetGuidelines}). ${formData.preferences && formData.preferences.length > 0 ? `They like ${formData.preferences.join(', ')}, so include more of those activities.` : ''}
 
 Return a JSON itinerary with this structure:
 {
   "destination": "City, Country",
   "tripName": "Short title",
   "overview": "Brief summary",
-  "startDate": "${surveyData.startDate}",
-  "endDate": "${surveyData.endDate}",
+  "startDate": "${formData.startDate}",
+  "endDate": "${formData.endDate}",
   "duration": ${tripDuration},
-  "travelTips": ["2-4 essential tips for this destination"],
+  "travelTips": ["2-4 essential tips for this destination, including 1 tip specifically about the typical weather during this time of year and any recommended preparations"],
   "days": [
     {
       "day": 1,
@@ -296,12 +248,12 @@ IMPORTANT GUIDELINES:
 1. Return only valid JSON
 2. All coordinates must be precise numeric values with exactly 6 decimal places for accuracy (e.g., 40.123456, -74.123456)
 3. All costs must be numbers
-4. Include both activities AND meals in each day:
-   - Do NOT put food experiences in the activities array
-   - Always include 1-3 meals per day in the meals array
+4. Include both activities AND meals in each day
 5. Provide precise, real-world locations that exist
 6. Activities should make geographic sense (grouped by area when possible)
-7. Include accurate transportMode and transportCost for each activity and meal${surveyData.preferences.includes('food') ? '\n8. Since the traveler likes food, emphasize quality dining experiences in the meals section. If an experience involves food next to a meal time, dont add a meal as well' : ''}`;
+7. Include accurate transportMode and transportCost for each activity and meal
+8. Make recommendations suitable for the typical weather at the destination during that time of year
+9. Include at least one travel tip specifically about the weather and what to prepare for`;
 }
 
 // Helper function to format dates in a nicer way

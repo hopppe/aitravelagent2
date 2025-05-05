@@ -109,7 +109,7 @@ const data = JSON.stringify({
     }
   ],
   temperature: 0.7,
-  max_tokens: 8000,
+  max_tokens: 10000,
 });
 
 // Options for the HTTPS request

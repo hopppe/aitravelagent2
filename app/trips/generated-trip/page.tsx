@@ -1,11 +1,13 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, lazy, Suspense } from 'react';
 import { FaEdit, FaShare } from 'react-icons/fa';
 import { useRouter } from 'next/navigation';
-import ItineraryTabs from '../../../components/trips/ItineraryTabs';
-import BookingServices from '../../../components/trips/BookingServices';
 import useBudgetCalculator from '../../../hooks/useBudgetCalculator';
+
+// Lazy load heavy components
+const ItineraryTabs = lazy(() => import('../../../components/trips/ItineraryTabs'));
+const BookingServices = lazy(() => import('../../../components/trips/BookingServices'));
 
 // Helper function to ensure valid coordinates and data structure
 function ensureValidCoordinates(itinerary: any) {
@@ -201,10 +203,24 @@ function ensureValidCoordinates(itinerary: any) {
   return itinerary;
 }
 
+// Simple fallback loader
+function ComponentLoader() {
+  return (
+    <div className="animate-pulse">
+      <div className="h-8 bg-gray-200 rounded w-3/4 mb-4"></div>
+      <div className="h-64 bg-gray-200 rounded mb-4"></div>
+      <div className="h-8 bg-gray-200 rounded w-1/2"></div>
+    </div>
+  );
+}
+
 export default function GeneratedTripPage() {
   const router = useRouter();
   const [itinerary, setItinerary] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveSuccess, setSaveSuccess] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   
   // Use our budget calculator hook to get normalized budget values
   const normalizedBudget = useBudgetCalculator(itinerary);
@@ -225,6 +241,85 @@ export default function GeneratedTripPage() {
     // Also log the budget level for debugging
     console.log('Generated Trip - Budget Level:', itinerary?.budgetLevel || 'moderate');
   }, [itinerary]);
+
+  // Function to save trip to Supabase
+  const saveTrip = async (tripData: any) => {
+    if (!tripData) {
+      console.error('Cannot save empty trip data');
+      return;
+    }
+
+    // Check if the trip is already saved to avoid duplicates
+    const isUpdate = !!tripData.saved_trip_id;
+    if (isUpdate) {
+      console.log('Trip already saved with ID:', tripData.saved_trip_id);
+      console.log('This will be an update operation rather than a new save');
+    } else {
+      console.log('This is a new trip save operation');
+    }
+
+    try {
+      setIsSaving(true);
+      setSaveError(null);
+      
+      console.log(`${isUpdate ? 'Updating' : 'Saving new'} trip to Supabase...`);
+      
+      // Send itinerary to the save-trip API endpoint
+      const response = await fetch('/api/save-trip', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(tripData),
+      });
+      
+      const responseText = await response.text();
+      console.log('API Response text:', responseText);
+      
+      let result;
+      try {
+        result = JSON.parse(responseText);
+      } catch (jsonError) {
+        console.error('Failed to parse API response as JSON:', jsonError);
+        throw new Error(`Invalid API response: ${responseText.substring(0, 100)}`);
+      }
+      
+      if (!response.ok) {
+        console.error('API error response:', result);
+        throw new Error(result.error || `Failed to save trip: ${response.status}`);
+      }
+      
+      if (!result.success || !result.tripId) {
+        console.error('Unexpected API response format:', result);
+        throw new Error('Invalid response format from server');
+      }
+      
+      console.log('Trip automatically saved successfully', result);
+      
+      // Store the trip ID in the itinerary object and update localStorage
+      const updatedItinerary = {
+        ...tripData,
+        saved_trip_id: result.tripId
+      };
+      
+      // Update state and localStorage
+      setItinerary(updatedItinerary);
+      localStorage.setItem('generatedItinerary', JSON.stringify(updatedItinerary));
+      
+      setSaveSuccess(true);
+      
+      // Reset success message after 3 seconds
+      setTimeout(() => {
+        setSaveSuccess(false);
+      }, 3000);
+      
+    } catch (error) {
+      console.error('Error auto-saving trip:', error);
+      setSaveError(error instanceof Error ? error.message : 'Unknown error occurred');
+    } finally {
+      setIsSaving(false);
+    }
+  };
 
   useEffect(() => {
     // Try to get the itinerary from localStorage
@@ -367,6 +462,15 @@ export default function GeneratedTripPage() {
         console.log('Saved validated itinerary back to localStorage');
         
         setItinerary(validatedItinerary);
+        
+        // Only save to Supabase if it hasn't been saved already
+        if (!validatedItinerary.saved_trip_id) {
+          console.log('No saved_trip_id found, saving to Supabase');
+          saveTrip(validatedItinerary);
+        } else {
+          console.log('Trip already has saved_trip_id, skipping save:', validatedItinerary.saved_trip_id);
+        }
+        
       } catch (parseError) {
         console.error('Error parsing itinerary JSON:', parseError);
         // Clear the invalid data
@@ -428,7 +532,18 @@ export default function GeneratedTripPage() {
   return (
     <div className="space-y-8">
       <div className="flex justify-between items-center">
-        <div></div> {/* Empty div for flex spacing */}
+        <div>
+          {saveSuccess && (
+            <div className="bg-green-100 text-green-700 px-4 py-2 rounded-md">
+              Trip auto-saved successfully!
+            </div>
+          )}
+          {saveError && (
+            <div className="bg-red-100 text-red-700 px-4 py-2 rounded-md">
+              {saveError}
+            </div>
+          )}
+        </div>
         <div className="flex gap-2">
           <button 
             onClick={handleEditTrip}
@@ -445,40 +560,43 @@ export default function GeneratedTripPage() {
         </div>
       </div>
 
-      {/* Tabs - Calendar, Map, Budget Views */}
-      <ItineraryTabs 
-        days={itinerary.days} 
-        budget={normalizedBudget}
-        title={itinerary.title || itinerary.tripName} 
-        summary={itinerary.summary}
-        travelTips={itinerary.travelTips}
-      />
-      
-      {/* Booking Services */}
-      <div className="mt-10">
-        <BookingServices 
-          destination={itinerary.destination}
-          startDate={itinerary.dates.start}
-          endDate={itinerary.dates.end}
-          accommodation={itinerary.days[0]?.accommodation}
-          allAccommodations={itinerary.days
-            .map((day: { accommodation?: any; date?: string }, index: number) => {
-              if (day.accommodation) {
-                console.log(`Day ${index + 1} (${day.date}): Found accommodation ${day.accommodation.name}`);
-                // Add the day information to the accommodation object
-                return {
-                  ...day.accommodation,
-                  // If not already set, determine check-in/check-out status
-                  checkInOut: day.accommodation.checkInOut || 
-                    (index === 0 ? 'check-in' : 
-                     index === itinerary.days.length - 1 ? 'check-out' : 'staying')
-                };
-              }
-              return null;
-            })
-            .filter(Boolean)}
-          budget={itinerary.budgetLevel || 'moderate'}
+      {/* Tabs - Calendar, Map, Budget Views with Suspense */}
+      <Suspense fallback={<ComponentLoader />}>
+        <ItineraryTabs 
+          days={itinerary.days} 
+          budget={normalizedBudget}
+          title={itinerary.title || itinerary.tripName} 
+          summary={itinerary.summary}
+          travelTips={itinerary.travelTips}
         />
+      </Suspense>
+      
+      {/* Booking Services with Suspense */}
+      <div className="mt-10">
+        <Suspense fallback={<ComponentLoader />}>
+          <BookingServices 
+            destination={itinerary.destination}
+            startDate={itinerary.dates.start}
+            endDate={itinerary.dates.end}
+            accommodation={itinerary.days[0]?.accommodation}
+            allAccommodations={itinerary.days
+              .map((day: { accommodation?: any; date?: string }, index: number) => {
+                if (day.accommodation) {
+                  // Add the day information to the accommodation object
+                  return {
+                    ...day.accommodation,
+                    // If not already set, determine check-in/check-out status
+                    checkInOut: day.accommodation.checkInOut || 
+                      (index === 0 ? 'check-in' : 
+                       index === itinerary.days.length - 1 ? 'check-out' : 'staying')
+                  };
+                }
+                return null;
+              })
+              .filter(Boolean)}
+            budget={itinerary.budgetLevel || 'moderate'}
+          />
+        </Suspense>
       </div>
     </div>
   );

@@ -22,11 +22,20 @@ This application uses a serverless architecture with Next.js, Supabase, and Open
 ## How It Works
 
 1. User submits travel preferences through the UI
-2. The frontend calls the `/api/generate-itinerary` endpoint
-3. The server creates a job in Supabase and calls the OpenAI API
-4. Results are stored in Supabase
-5. The frontend polls the `/api/job-status` endpoint to check progress
-6. When the job is complete, the frontend displays the generated itinerary
+2. The app calls a lightweight server-side API endpoint
+3. The server calls OpenAI API securely (protecting API keys)
+4. The generated itinerary is displayed immediately in the browser
+5. User can optionally save the trip to Supabase for later reference
+
+## Performance Optimizations
+
+This application is optimized for speed with a streamlined architecture:
+
+1. **Optimized Server-Side Calls**: A lightweight API endpoint handles OpenAI calls securely
+2. **No Background Jobs**: The response is processed immediately, without queuing or polling
+3. **Client-Side Rendering**: Itinerary is displayed in the browser as soon as it's received
+4. **Lazy Saving**: Itineraries are only saved to Supabase when the user explicitly clicks "Save Trip"
+5. **Code Splitting**: Components are lazy-loaded for faster initial page loads
 
 ## Setup
 
@@ -46,9 +55,16 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
 OPENAI_API_KEY=your_openai_api_key
 ```
 
+### Security Best Practices
+
+- OpenAI API key is only used on the server side
+- Secure API endpoints handle sensitive operations
+- Client-side code never accesses or exposes API keys
+- Separate API endpoint for saving trips provides better security and performance
+
 ### Database Setup
 
-Create a `jobs` table in your Supabase database:
+Create the following tables in your Supabase database:
 
 ```sql
 CREATE TABLE jobs (
@@ -56,6 +72,13 @@ CREATE TABLE jobs (
   status TEXT,
   result JSONB,
   error TEXT,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE TABLE trips (
+  id TEXT PRIMARY KEY,
+  trip_data JSONB,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );

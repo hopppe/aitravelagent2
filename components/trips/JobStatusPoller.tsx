@@ -46,14 +46,39 @@ const JobStatusPoller: React.FC<JobStatusPollerProps> = ({
   // Detect if we're on a mobile device to adjust polling behavior
   const isMobile = typeof navigator !== 'undefined' && 
     /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+  
+  // Detect if we're on iOS Safari specifically
+  const isIOSSafari = typeof navigator !== 'undefined' && 
+    /iPad|iPhone|iPod/.test(navigator.userAgent) &&
+    !/CriOS|FxiOS|EdgiOS/.test(navigator.userAgent) && // Not Chrome, Firefox, or Edge
+    /WebKit|Safari/i.test(navigator.userAgent);
+  
+  if (isIOSSafari) {
+    console.log('iOS Safari detected - applying Safari-specific optimizations');
+  }
 
   // Enhanced network status monitoring with active connection testing
   useEffect(() => {
     const testConnectionSpeed = async () => {
       try {
         const startTime = Date.now();
+        // Use a cache-busting parameter and reduced timeout for connection testing
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
+        
         // Fetch a tiny resource with a cache buster to test connection
-        const response = await fetch(`/api/ping?t=${Date.now()}`);
+        const response = await fetch(`/api/ping?t=${Date.now()}`, {
+          signal: controller.signal,
+          // Use 'no-store' for Safari which can aggressively cache
+          cache: 'no-store',
+          headers: {
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
+            'Pragma': 'no-cache'
+          }
+        });
+        
+        clearTimeout(timeoutId);
+        
         if (response.ok) {
           const endTime = Date.now();
           const responseTime = endTime - startTime;
@@ -92,8 +117,8 @@ const JobStatusPoller: React.FC<JobStatusPollerProps> = ({
     
     const handleOnline = async () => {
       console.log('Browser reports network connection restored');
-      // Verify connection with an actual request
-      if (await testConnectionSpeed()) {
+      // For iOS Safari, the online event can be unreliable, so always run an actual test
+      if (isIOSSafari || await testConnectionSpeed()) {
         setIsOffline(false);
         // Reset polling to appropriate interval based on device and connection quality
         const newInterval = isMobile || connectionQuality === 'poor' 
@@ -106,12 +131,33 @@ const JobStatusPoller: React.FC<JobStatusPollerProps> = ({
     
     const handleOffline = () => {
       console.log('Browser reports network connection lost');
-      setIsOffline(true);
-      setMessage('Waiting for network connection...');
+      
+      // For Safari on iOS, verify with an actual network request since events are unreliable
+      if (isIOSSafari) {
+        // Quick test with minimal timeout
+        fetch('/api/ping?t=' + Date.now(), { 
+          signal: AbortSignal.timeout(2000),
+          cache: 'no-store' 
+        })
+          .then(() => {
+            console.log('iOS Safari incorrectly reported offline, but we can still reach the server');
+            // Don't update offline state as the connection actually works
+          })
+          .catch(() => {
+            console.log('Confirmed offline status with actual request failure');
+            setIsOffline(true);
+            setMessage('Waiting for network connection...');
+          });
+      } else {
+        // For other browsers, trust the event
+        setIsOffline(true);
+        setMessage('Waiting for network connection...');
+      }
     };
     
     const checkConnectionStatus = async () => {
-      if (navigator.onLine) {
+      // For iOS Safari, always perform an actual network test
+      if (isIOSSafari || navigator.onLine) {
         await testConnectionSpeed();
       } else {
         setIsOffline(true);
@@ -204,7 +250,21 @@ const JobStatusPoller: React.FC<JobStatusPollerProps> = ({
         lastFetchTime.current = Date.now();
         console.log(`Polling job status for ${jobId} (attempt ${pollCount + 1})`);
         
-        const response = await fetch(`/api/job-status?jobId=${jobId}`);
+        // Create fetch request with timeout
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), isIOSSafari ? 15000 : 10000); // Longer timeout for Safari
+        
+        const response = await fetch(`/api/job-status?jobId=${jobId}&_t=${Date.now()}`, {
+          signal: controller.signal,
+          // Use 'no-store' for Safari which can aggressively cache
+          cache: 'no-store',
+          headers: {
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
+            'Pragma': 'no-cache'
+          }
+        });
+        
+        clearTimeout(timeoutId);
         
         // Measure response time for connection quality heuristic
         const responseTime = Date.now() - lastFetchTime.current;
