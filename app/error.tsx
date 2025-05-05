@@ -22,8 +22,13 @@ export default function Error({
         message="An error occurred in the application"
         details={error.message}
         suggestion="You can try resetting the application by clicking below."
-        actionText="Try Again"
-        actionFn={reset}
+        actions={[
+          {
+            text: "Try Again",
+            fn: reset,
+            isPrimary: true
+          }
+        ]}
       />
       
       <div className="mt-8 p-4 bg-gray-50 rounded-lg shadow max-w-lg mx-auto">
