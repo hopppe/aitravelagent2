@@ -245,7 +245,7 @@ export function generatePrompt(surveyData: SurveyData): string {
   return `
 Create a travel itinerary for ${surveyData.destination} from ${formattedStartDate} to ${formattedEndDate} (${tripDuration} days).
 
-Tailor this itinerary for the traveler. Their purpose of the trip is ${surveyData.purpose}. Their budget is ${surveyData.budget} (${budgetGuidelines}). ${surveyData.preferences && surveyData.preferences.length > 0 ? `They like ${surveyData.preferences.join(', ')}, so include more of those activities.` : ''}
+Tailor this itinerary for the traveler. Their purpose of the trip is ${surveyData.purpose}. Their budget is ${surveyData.budget} (${budgetGuidelines}). ${surveyData.preferences && surveyData.preferences.length > 0 ? `They like ${surveyData.preferences.join(', ')}, so include more of those activities, unless it is food then just include regular tourist activities.` : ''}
 
 Return a JSON itinerary with this structure:
 {

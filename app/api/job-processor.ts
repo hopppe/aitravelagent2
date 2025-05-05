@@ -1,5 +1,6 @@
 import { updateJobStatus } from '../../lib/supabase';
 import { createLogger } from '../../lib/logger';
+import { headers } from 'next/headers';
 
 // Create a logger for the job processor
 const logger = createLogger('job-processor');
@@ -211,6 +212,12 @@ export function ensureValidCoordinates(itinerary: any): any {
   return itinerary;
 }
 
+// Near the top of the file, add a helper function to detect mobile user agents
+function isMobileUserAgent(userAgent: string | null): boolean {
+  if (!userAgent) return false;
+  return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(userAgent);
+}
+
 // Parse and process the OpenAI response from Edge Function
 export async function processItineraryResponse(jobId: string, contentData: any): Promise<boolean> {
   try {
@@ -362,7 +369,18 @@ export async function processItineraryJob(
   apiKey: string
 ): Promise<boolean> {
   try {
-    logger.info(`Processing itinerary job for job ${jobId} in environment: ${process.env.NODE_ENV || 'unknown'}`);
+    // Get user agent if available from request header context
+    let isMobileRequest = false;
+    try {
+      const headersList = headers();
+      const userAgent = headersList.get('user-agent');
+      isMobileRequest = isMobileUserAgent(userAgent);
+    } catch (headerError) {
+      logger.warn(`Could not access request headers for job ${jobId}: ${headerError}`);
+      // Continue without device detection
+    }
+    
+    logger.info(`Processing itinerary job for job ${jobId} in environment: ${process.env.NODE_ENV || 'unknown'}, mobile request: ${isMobileRequest}`);
     
     // Use the provided prompt or generate one using the generator function
     let prompt: string;
@@ -373,6 +391,11 @@ export async function processItineraryJob(
       prompt = promptGenerator;
       logger.debug(`Using pre-formulated prompt for job ${jobId}, length: ${prompt.length} characters`);
     }
+    
+    // Estimate completion time based on prompt length
+    // Longer prompts mean more complex trips which need more time
+    const isComplexTrip = prompt.length > 8000;
+    logger.info(`Job ${jobId} complexity assessment: ${isComplexTrip ? 'complex' : 'standard'} trip (${prompt.length} chars)`);
     
     // Update job status to processing if not already
     try {
@@ -386,16 +409,33 @@ export async function processItineraryJob(
     // Call OpenAI API directly
     logger.info(`Calling OpenAI API for job ${jobId}`);
     
-    // Set a reasonable timeout for the OpenAI call
-    // Use a longer timeout for production to account for potential network issues
+    // Set timeout based on environment, device type, and trip complexity
     const isProduction = process.env.NODE_ENV === 'production';
-    const timeoutDuration = isProduction ? 90000 : 60000; // 90 seconds in production, 60 in development
+    let timeoutDuration = 60000; // 60 seconds base timeout
+    
+    // Adjust timeout based on environment and request type
+    if (isProduction) {
+      timeoutDuration = 90000; // 90 seconds in production
+    }
+    
+    // Add more time for mobile requests (they tend to be slower)
+    if (isMobileRequest) {
+      timeoutDuration += 30000; // Additional 30 seconds for mobile
+    }
+    
+    // Add more time for complex trips
+    if (isComplexTrip) {
+      timeoutDuration += 30000; // Additional 30 seconds for complex trips
+    }
     
     logger.info(`Setting API timeout to ${timeoutDuration}ms for job ${jobId}`);
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeoutDuration);
     
     try {
+      logger.info(`Making OpenAI API request for job ${jobId}, timeout: ${timeoutDuration}ms`);
+      const startTime = Date.now();
+      
       const response = await fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
         headers: {
@@ -407,38 +447,39 @@ export async function processItineraryJob(
           messages: [
             {
               role: 'system',
-              content: 'You are an expert travel planner with deep knowledge of destinations worldwide. Generate a personalized travel itinerary based on the user\'s preferences. Return your response in a structured JSON format only, with no additional text, explanation, or markdown formatting. Do not wrap the JSON in code blocks. Ensure all property names use double quotes. Every activity MUST include high-precision "coordinates" with "lat" and "lng" numerical values with exactly 6 decimal places for accuracy (e.g., 40.123456, -74.123456). For cost fields, use numerical values only without currency symbols. For each activity and meal, include a transportMode (Walk, Bus, Metro, Taxi, Train, etc.) and transportCost (0 for walking, 1-3 for public transport, 10-20 for taxis) appropriate to the location. IMPORTANT: Always separate food experiences (restaurants, cafes, food markets) into the "meals" array and non-food activities (sightseeing, museums, etc.) into the "activities" array. Each day should include at least 1-3 meals in the meals array. Never put food experiences in the activities array. Provide a varied schedule with geographic coherence - activities on a given day should make sense location-wise.'
+              content: 'You are an expert travel planner that generates detailed travel itineraries in JSON format.'
             },
             {
               role: 'user',
               content: prompt
             }
           ],
-          temperature: 0.6,
-          max_tokens: isProduction ? 12000 : 10000 // Increase max tokens in production for safety
+          temperature: 0.7,
+          max_tokens: 12000,
         }),
         signal: controller.signal
       });
-
+      
+      const requestDuration = Date.now() - startTime;
+      logger.info(`OpenAI API request completed in ${requestDuration}ms for job ${jobId}`);
+      
       clearTimeout(timeoutId);
-
+      
       if (!response.ok) {
-        const error = await response.json();
-        logger.error(`OpenAI API error for job ${jobId}:`, error);
-        throw new Error(`OpenAI API error: ${error.error?.message || 'Unknown error'}`);
+        const errorText = await response.text();
+        logger.error(`OpenAI API returned error for job ${jobId}: HTTP ${response.status} - ${errorText}`);
+        throw new Error(`OpenAI API Error: HTTP ${response.status} - ${errorText}`);
       }
-
-      logger.info(`OpenAI API returned success for job ${jobId}`);
+      
       const openAIData = await response.json();
-      const rawContent = openAIData.choices[0].message.content;
+      const rawContent = openAIData.choices[0]?.message?.content;
       
-      // Add retry mechanism if response appears to be empty or malformed
-      if (!rawContent || rawContent.trim().length < 10) {
-        logger.warn(`Empty or very short response received for job ${jobId}, failing job`);
-        throw new Error('Empty or invalid response from OpenAI API');
+      if (!rawContent) {
+        logger.error(`No content in OpenAI response for job ${jobId}`);
+        throw new Error('No content in OpenAI response');
       }
       
-      // Log a small snippet of the response for debugging purposes
+      // Log a preview of the content (first 100 chars)
       const contentPreview = rawContent.substring(0, 100) + '...';
       logger.info(`Received OpenAI response for job ${jobId}, preview: ${contentPreview}`);
       
@@ -463,9 +504,21 @@ export async function processItineraryJob(
       if (fetchError.name === 'AbortError') {
         logger.error(`OpenAI API call timed out for job ${jobId} after ${timeoutDuration}ms`);
         
+        // Determine a more specific message based on device and complexity
+        let timeoutMessage = 'API request timed out.';
+        if (isMobileRequest && isComplexTrip) {
+          timeoutMessage += ' Mobile connections may be slower with complex trips. Please try again with a shorter trip duration or on WiFi.';
+        } else if (isMobileRequest) {
+          timeoutMessage += ' Mobile connections may be slower. Please try again on WiFi if possible.';
+        } else if (isComplexTrip) {
+          timeoutMessage += ' Please try again with a shorter trip duration.';
+        } else {
+          timeoutMessage += ' Please try again.';
+        }
+        
         // Update job status to indicate timeout specifically
         await updateJobStatus(jobId, 'failed', {
-          error: 'API request timed out. Please try again with a shorter trip duration.'
+          error: timeoutMessage
         });
         return false;
       }
@@ -476,10 +529,23 @@ export async function processItineraryJob(
   } catch (error: any) {
     logger.error(`Failed to process itinerary job ${jobId}:`, error);
     
+    // Determine if this is a network-related error
+    const errorMessage = error.message || 'Unknown error';
+    const isNetworkError = errorMessage.includes('network') || 
+                          errorMessage.includes('ECONNRESET') || 
+                          errorMessage.includes('ETIMEDOUT') ||
+                          errorMessage.includes('fetch');
+    
+    // Create user-friendly error message
+    let userErrorMessage = `OpenAI API error: ${errorMessage}`;
+    if (isNetworkError) {
+      userErrorMessage = 'Network connection error. Please check your internet connection and try again.';
+    }
+    
     // Update job status to failed
     try {
       await updateJobStatus(jobId, 'failed', {
-        error: `OpenAI API error: ${error.message || 'Unknown error'}`
+        error: userErrorMessage
       });
       logger.info(`Updated job ${jobId} status to failed`);
     } catch (updateError: any) {

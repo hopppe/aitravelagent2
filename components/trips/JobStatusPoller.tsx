@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { JobData } from '../../lib/supabase';
 
 // Props type definition
@@ -34,6 +34,11 @@ const JobStatusPoller: React.FC<JobStatusPollerProps> = ({
   const [errorDetails, setErrorDetails] = useState<string>('');
   const [isOffline, setIsOffline] = useState(false);
   const [currentPollingInterval, setCurrentPollingInterval] = useState(pollingInterval);
+  const [connectionQuality, setConnectionQuality] = useState<'good'|'poor'|'unknown'>('unknown');
+
+  // Use refs to track response times for connection quality estimation
+  const lastFetchTime = useRef<number>(0);
+  const responseTimeHistory = useRef<number[]>([]);
   
   // Maximum number of "not found" responses before considering it an error
   const MAX_NOT_FOUND_RETRIES = 20;
@@ -42,38 +47,106 @@ const JobStatusPoller: React.FC<JobStatusPollerProps> = ({
   const isMobile = typeof navigator !== 'undefined' && 
     /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
 
-  // Add network status monitoring
+  // Enhanced network status monitoring with active connection testing
   useEffect(() => {
-    const handleOnline = () => {
-      console.log('Network connection restored');
-      setIsOffline(false);
-      // Reset polling to normal interval
-      setCurrentPollingInterval(pollingInterval);
+    const testConnectionSpeed = async () => {
+      try {
+        const startTime = Date.now();
+        // Fetch a tiny resource with a cache buster to test connection
+        const response = await fetch(`/api/ping?t=${Date.now()}`);
+        if (response.ok) {
+          const endTime = Date.now();
+          const responseTime = endTime - startTime;
+          
+          // Keep a rolling window of last 3 response times
+          responseTimeHistory.current.push(responseTime);
+          if (responseTimeHistory.current.length > 3) {
+            responseTimeHistory.current.shift();
+          }
+          
+          // Calculate average response time
+          const avgResponseTime = responseTimeHistory.current.reduce((a, b) => a + b, 0) / 
+            Math.max(1, responseTimeHistory.current.length);
+            
+          // Determine connection quality based on average response time
+          if (avgResponseTime < 300) {
+            setConnectionQuality('good');
+          } else if (avgResponseTime < 1000) {
+            setConnectionQuality('poor');
+            console.log(`Poor connection detected (${Math.round(avgResponseTime)}ms avg response time)`);
+          } else {
+            setConnectionQuality('poor');
+            console.log(`Very poor connection detected (${Math.round(avgResponseTime)}ms avg response time)`);
+          }
+          
+          setIsOffline(false);
+          return true;
+        }
+        return false;
+      } catch (error) {
+        console.log('Connection test failed:', error);
+        setConnectionQuality('poor');
+        return false;
+      }
+    };
+    
+    const handleOnline = async () => {
+      console.log('Browser reports network connection restored');
+      // Verify connection with an actual request
+      if (await testConnectionSpeed()) {
+        setIsOffline(false);
+        // Reset polling to appropriate interval based on device and connection quality
+        const newInterval = isMobile || connectionQuality === 'poor' 
+          ? pollingInterval * 1.5 
+          : pollingInterval;
+        setCurrentPollingInterval(newInterval);
+        console.log(`Connection restored, adjusted polling interval to ${newInterval}ms`);
+      }
     };
     
     const handleOffline = () => {
-      console.log('Network connection lost');
+      console.log('Browser reports network connection lost');
       setIsOffline(true);
       setMessage('Waiting for network connection...');
+    };
+    
+    const checkConnectionStatus = async () => {
+      if (navigator.onLine) {
+        await testConnectionSpeed();
+      } else {
+        setIsOffline(true);
+      }
     };
     
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
     
-    // Initialize offline status
-    setIsOffline(!navigator.onLine);
+    // Initial connection check
+    checkConnectionStatus();
     
-    // On mobile devices, use a slightly longer polling interval
+    // For mobile devices, perform more aggressive memory management
+    let connectionCheckInterval: NodeJS.Timeout;
     if (isMobile) {
-      setCurrentPollingInterval(pollingInterval * 1.5);
-      console.log(`Mobile device detected, adjusted polling interval to ${pollingInterval * 1.5}ms`);
+      // Schedule periodic connection quality checks
+      connectionCheckInterval = setInterval(checkConnectionStatus, 15000);
+      
+      // Adjust polling interval based on device
+      setCurrentPollingInterval(currentValue => {
+        const newValue = pollingInterval * 1.5;
+        console.log(`Mobile device detected, adjusted polling interval to ${newValue}ms`);
+        return newValue;
+      });
     }
     
     return () => {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
+      if (connectionCheckInterval) clearInterval(connectionCheckInterval);
+      
+      // Clean up memory
+      responseTimeHistory.current = [];
     };
-  }, [pollingInterval]);
+  }, [pollingInterval, isMobile, connectionQuality]);
 
   // Calculate expected time based on trip days (30-60 seconds range)
   const minSeconds = 30;
@@ -95,27 +168,62 @@ const JobStatusPoller: React.FC<JobStatusPollerProps> = ({
       return;
     }
     
-    // If device is offline, don't poll but set up a retry timer
+    // If device is offline, don't poll but set up a retry timer with increasing backoff
     if (isOffline) {
+      // Use exponential backoff for connection retry attempts, capped at 30 seconds
+      const backoffTime = Math.min(5000 * Math.pow(1.5, Math.min(5, Math.floor(pollCount / 5))), 30000);
+      
       const offlineTimer = setTimeout(() => {
-        // Check again if online
-        if (navigator.onLine) {
-          setIsOffline(false);
-          // Will trigger a new poll
-          setPollCount(prev => prev);
-        } else {
-          // Stay in offline mode and check again later
-          setPollCount(prev => prev);
-        }
-      }, 5000); // Check every 5 seconds in offline mode
+        console.log(`Checking connection status after ${backoffTime/1000}s backoff`);
+        // Attempt to fetch a tiny resource to check connection
+        fetch(`/api/ping?t=${Date.now()}`)
+          .then(response => {
+            if (response.ok) {
+              console.log('Connection successfully restored');
+              setIsOffline(false);
+              // Will trigger a new poll
+              setPollCount(prev => prev);
+            } else {
+              // Stay in offline mode and check again later with backoff
+              console.log('Still offline (connection test resource returned error)');
+              setPollCount(prev => prev + 1); // Increment poll count to increase backoff
+            }
+          })
+          .catch(() => {
+            console.log('Still offline (connection test failed)');
+            setPollCount(prev => prev + 1); // Increment poll count to increase backoff
+          });
+      }, backoffTime);
       
       return () => clearTimeout(offlineTimer);
     }
 
     const pollJobStatus = async () => {
       try {
+        // Track fetch start time to measure connection quality
+        lastFetchTime.current = Date.now();
         console.log(`Polling job status for ${jobId} (attempt ${pollCount + 1})`);
+        
         const response = await fetch(`/api/job-status?jobId=${jobId}`);
+        
+        // Measure response time for connection quality heuristic
+        const responseTime = Date.now() - lastFetchTime.current;
+        responseTimeHistory.current.push(responseTime);
+        if (responseTimeHistory.current.length > 3) {
+          responseTimeHistory.current.shift();
+        }
+        
+        console.log(`Got response in ${responseTime}ms`);
+        
+        // If response time is very slow, mark connection as poor quality
+        if (responseTime > 1500) {
+          console.log('Slow response detected, considering poor connection');
+          setConnectionQuality('poor');
+          // Adjust polling interval for poor connections
+          if (currentPollingInterval < pollingInterval * 2) {
+            setCurrentPollingInterval(previous => Math.min(previous * 1.2, pollingInterval * 2.5));
+          }
+        }
         
         if (!response.ok) {
           // Try to parse error response
@@ -141,7 +249,7 @@ const JobStatusPoller: React.FC<JobStatusPollerProps> = ({
               setErrorDetails(errMsg);
               throw new Error(errMsg);
             } else {
-              // For the first few "not found" responses, just keep polling
+              // For the first few "not found" responses, just keep polling with backoff
               setMessage('Getting everything ready for your trip...');
               
               // Add increasing delay for each retry (exponential backoff)
@@ -158,7 +266,10 @@ const JobStatusPoller: React.FC<JobStatusPollerProps> = ({
         }
         
         // Reset not found counter on successful response
-        if (notFoundCount > 0) setNotFoundCount(0);
+        if (notFoundCount > 0) {
+          setNotFoundCount(0);
+          console.log('Reset not found counter after successful response');
+        }
         
         const data: JobData = await response.json();
         console.log(`Job ${jobId} status: ${data.status}`);
@@ -167,10 +278,15 @@ const JobStatusPoller: React.FC<JobStatusPollerProps> = ({
         setStatus(data.status);
         setDetails(data);
         
-        // If we're on mobile and in the processing state, slightly increase polling interval for efficiency
-        if (isMobile && data.status === 'processing' && currentPollingInterval < pollingInterval * 2) {
-          // Gradually increase polling interval up to 2x the original
-          setCurrentPollingInterval(prevInterval => Math.min(prevInterval * 1.1, pollingInterval * 2));
+        // If we're on mobile or have poor connection quality, and in the processing state, 
+        // slightly increase polling interval for efficiency
+        if ((isMobile || connectionQuality === 'poor') && 
+            data.status === 'processing' && 
+            currentPollingInterval < pollingInterval * 2.5) {
+          // Gradually increase polling interval up to 2.5x the original
+          const newInterval = Math.min(currentPollingInterval * 1.1, pollingInterval * 2.5);
+          console.log(`Adjusting polling interval to ${Math.round(newInterval)}ms (mobile/poor connection optimization)`);
+          setCurrentPollingInterval(newInterval);
         }
         
         // Handle different status cases
@@ -237,9 +353,13 @@ const JobStatusPoller: React.FC<JobStatusPollerProps> = ({
         setErrorDetails(error.message || 'Unknown error');
         
         // Check if it might be a network error
-        if (error.message?.includes('Failed to fetch') || !navigator.onLine) {
+        if (error.message?.includes('Failed to fetch') || 
+            error.message?.includes('NetworkError') ||
+            error.message?.includes('network') ||
+            !navigator.onLine) {
           setIsOffline(true);
           setMessage('Connection issue. Waiting for network...');
+          console.log('Network error detected, entering offline mode');
           // Don't increment poll count while offline
           return;
         }
@@ -260,7 +380,7 @@ const JobStatusPoller: React.FC<JobStatusPollerProps> = ({
     const timer = setTimeout(pollJobStatus, currentPollingInterval);
     
     return () => clearTimeout(timer);
-  }, [jobId, status, pollCount, maxPolls, currentPollingInterval, onComplete, onError, notFoundCount, tripDays, isOffline]);
+  }, [jobId, status, pollCount, maxPolls, currentPollingInterval, onComplete, onError, notFoundCount, tripDays, isOffline, connectionQuality]);
 
   // Progress calculation based on expected time for trip days
   // Use a non-linear easing function for smoother animation
@@ -306,6 +426,11 @@ const JobStatusPoller: React.FC<JobStatusPollerProps> = ({
           <div className="text-center mb-5">
             <p className="text-md text-gray-700">Waiting for your internet connection to return...</p>
             <p className="text-sm text-gray-500 mt-1">Your trip is still being generated in the background.</p>
+            {isMobile && (
+              <p className="text-xs text-gray-500 mt-1">
+                Mobile connections can be less reliable. Try moving to an area with better reception.
+              </p>
+            )}
           </div>
           
           <div className="flex justify-center">
@@ -314,6 +439,18 @@ const JobStatusPoller: React.FC<JobStatusPollerProps> = ({
                 if (navigator.onLine) {
                   setIsOffline(false);
                   setPollCount(prev => prev); // Force a refresh
+                } else {
+                  // Try an actual network request to check connection
+                  fetch(`/api/ping?t=${Date.now()}`)
+                    .then(() => {
+                      setIsOffline(false);
+                      setPollCount(prev => prev); // Force a refresh
+                    })
+                    .catch(err => {
+                      console.log('Still offline after manual check:', err);
+                      // Show a brief message to the user
+                      setMessage('Still offline. Please check your connection.');
+                    });
                 }
               }}
               className="px-4 py-2 bg-blue-600 text-white text-sm rounded-lg font-medium hover:bg-blue-700 transition-colors"
@@ -339,6 +476,10 @@ const JobStatusPoller: React.FC<JobStatusPollerProps> = ({
           <h3 className="text-lg font-semibold text-gray-900 mb-3">Taking longer than expected</h3>
           <p className="text-sm text-gray-700 mb-4">
             Your itinerary is still being generated, but it's taking longer than usual.
+            {connectionQuality === 'poor' && 
+              " This may be due to a slow internet connection."}
+            {isMobile && 
+              " Mobile connections can sometimes cause delays."}
           </p>
           <div className="flex space-x-3">
             <button 
@@ -394,6 +535,12 @@ const JobStatusPoller: React.FC<JobStatusPollerProps> = ({
         
         <div className="text-center mb-2">
           <p className="text-md text-gray-700">{message}</p>
+          
+          {connectionQuality === 'poor' && (
+            <p className="text-xs text-gray-500 mt-1">
+              {isMobile ? 'Mobile connection detected. This may take a bit longer.' : 'Slow connection detected. This may take a bit longer.'}
+            </p>
+          )}
           
           {hasErrored && (
             <p className="text-xs text-red-600 mt-2">
