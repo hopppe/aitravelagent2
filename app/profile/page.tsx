@@ -4,7 +4,8 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '../../hooks/useAuth';
 import Link from 'next/link';
-import { FaUser, FaEnvelope } from 'react-icons/fa';
+import { FaUser, FaEnvelope, FaPlane } from 'react-icons/fa';
+import TripList from '../../components/trips/TripList';
 
 export default function ProfilePage() {
   const { user, loading, refreshUser } = useAuth();
@@ -103,7 +104,7 @@ export default function ProfilePage() {
   }
 
   return (
-    <div className="max-w-2xl mx-auto">
+    <div className="max-w-4xl mx-auto">
       <h1 className="text-3xl font-bold mb-6">Your Profile</h1>
       
       {error && (
@@ -118,64 +119,84 @@ export default function ProfilePage() {
         </div>
       )}
       
-      <div className="bg-white rounded-lg shadow-md overflow-hidden mb-6">
-        <div className="bg-primary text-white p-4">
-          <h2 className="text-xl font-semibold">Account Information</h2>
-        </div>
-        
-        <div className="p-6 space-y-4">
-          <div className="flex items-start gap-3">
-            <FaEnvelope className="text-gray-500 mt-1" />
-            <div>
-              <p className="text-sm text-gray-500">Email Address</p>
-              <p className="font-medium">{user.email}</p>
-            </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+        <div className="bg-white rounded-lg shadow-md overflow-hidden">
+          <div className="bg-primary text-white p-4">
+            <h2 className="text-xl font-semibold">Account Information</h2>
           </div>
           
-          <div className="flex items-start gap-3">
-            <FaUser className="text-gray-500 mt-1" />
-            <div>
-              <p className="text-sm text-gray-500">Account Type</p>
-              <p className="font-medium">
-                {user.app_metadata?.provider || 'Email'} account
-              </p>
+          <div className="p-6 space-y-4">
+            <div className="flex items-start gap-3">
+              <FaEnvelope className="text-gray-500 mt-1" />
+              <div>
+                <p className="text-sm text-gray-500">Email Address</p>
+                <p className="font-medium">{user.email}</p>
+              </div>
+            </div>
+            
+            <div className="flex items-start gap-3">
+              <FaUser className="text-gray-500 mt-1" />
+              <div>
+                <p className="text-sm text-gray-500">Account Type</p>
+                <p className="font-medium">
+                  {user.app_metadata?.provider || 'Email'} account
+                </p>
+              </div>
             </div>
           </div>
+        </div>
+        
+        <div className="bg-white rounded-lg shadow-md overflow-hidden">
+          <div className="bg-primary text-white p-4">
+            <h2 className="text-xl font-semibold">Profile Information</h2>
+          </div>
+          
+          <form onSubmit={handleUpdateProfile} className="p-6 space-y-4">
+            <div>
+              <label htmlFor="name" className="block text-gray-700 mb-2">
+                Display Name
+              </label>
+              <input
+                id="name"
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
+                placeholder="Enter your name"
+                maxLength={255}
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                Maximum 255 characters
+              </p>
+            </div>
+            
+            <button
+              type="submit"
+              disabled={isSaving}
+              className="bg-primary hover:bg-primary-dark text-white font-bold py-2 px-6 rounded-lg focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary disabled:opacity-50"
+            >
+              {isSaving ? 'Saving...' : 'Update Profile'}
+            </button>
+          </form>
         </div>
       </div>
       
-      <div className="bg-white rounded-lg shadow-md overflow-hidden">
-        <div className="bg-primary text-white p-4">
-          <h2 className="text-xl font-semibold">Profile Information</h2>
+      <div className="bg-white rounded-lg shadow-md overflow-hidden mb-8">
+        <div className="bg-primary text-white p-4 flex justify-between items-center">
+          <h2 className="text-xl font-semibold flex items-center">
+            <FaPlane className="mr-2" /> Your Trips
+          </h2>
+          <Link
+            href="/trips/new"
+            className="bg-white text-primary px-4 py-1 rounded-md text-sm font-medium hover:bg-gray-100"
+          >
+            Create New Trip
+          </Link>
         </div>
         
-        <form onSubmit={handleUpdateProfile} className="p-6 space-y-4">
-          <div>
-            <label htmlFor="name" className="block text-gray-700 mb-2">
-              Display Name
-            </label>
-            <input
-              id="name"
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
-              placeholder="Enter your name"
-              maxLength={255}
-            />
-            <p className="text-xs text-gray-500 mt-1">
-              Maximum 255 characters
-            </p>
-          </div>
-          
-          <button
-            type="submit"
-            disabled={isSaving}
-            className="bg-primary hover:bg-primary-dark text-white font-bold py-2 px-6 rounded-lg focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary disabled:opacity-50"
-          >
-            {isSaving ? 'Saving...' : 'Update Profile'}
-          </button>
-        </form>
+        <div className="p-6">
+          <TripList redirectIfUnauthenticated={false} />
+        </div>
       </div>
     </div>
   );

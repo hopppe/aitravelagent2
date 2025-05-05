@@ -2,8 +2,9 @@
 
 import React, { useState, useEffect, lazy, Suspense } from 'react';
 import { FaEdit, FaShare } from 'react-icons/fa';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import useBudgetCalculator from '../../../hooks/useBudgetCalculator';
+import { supabaseAuth } from '../../../lib/auth';
 
 // Lazy load heavy components
 const ItineraryTabs = lazy(() => import('../../../components/trips/ItineraryTabs'));
@@ -216,14 +217,80 @@ function ComponentLoader() {
 
 export default function GeneratedTripPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const tripId = searchParams.get('id');
+  
   const [itinerary, setItinerary] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
   
   // Use our budget calculator hook to get normalized budget values
   const normalizedBudget = useBudgetCalculator(itinerary);
+
+  // Function to load trip from the database by ID
+  const loadTripFromDatabase = async (id: string) => {
+    try {
+      console.log(`Loading trip with ID ${id} from database...`);
+      setIsLoading(true);
+      setLoadError(null);
+      
+      // Get auth session from Supabase
+      const { data: sessionData } = await supabaseAuth.auth.getSession();
+      const accessToken = sessionData?.session?.access_token;
+      
+      const headers: HeadersInit = {
+        'Content-Type': 'application/json',
+      };
+      
+      // Add auth token if available
+      if (accessToken) {
+        headers['Authorization'] = `Bearer ${accessToken}`;
+        console.log('Including authentication token in request');
+      } else {
+        console.log('No authentication token available, proceeding with public access');
+      }
+      
+      const response = await fetch(`/api/trips/${id}`, {
+        headers
+      });
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`Error loading trip: ${errorText}`);
+        throw new Error(`Failed to load trip: ${response.status}`);
+      }
+      
+      const data = await response.json();
+      
+      if (!data.trip || !data.trip.trip_data) {
+        throw new Error('Trip data not found');
+      }
+      
+      console.log('Successfully loaded trip from database');
+      
+      // The trip data is stored in trip_data property
+      const tripData = data.trip.trip_data;
+      
+      // Set the saved_trip_id if it doesn't exist
+      if (!tripData.saved_trip_id) {
+        tripData.saved_trip_id = id;
+      }
+      
+      // Update state and localStorage
+      setItinerary(tripData);
+      localStorage.setItem('generatedItinerary', JSON.stringify(tripData));
+      
+    } catch (error) {
+      console.error('Error loading trip:', error);
+      setLoadError(error instanceof Error ? error.message : 'Unknown error occurred');
+      // Don't clear localStorage in this case - we might want to fall back to it
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   // Debug log for accommodation data
   useEffect(() => {
@@ -264,12 +331,26 @@ export default function GeneratedTripPage() {
       
       console.log(`${isUpdate ? 'Updating' : 'Saving new'} trip to Supabase...`);
       
+      // Get auth session from Supabase
+      const { data: sessionData } = await supabaseAuth.auth.getSession();
+      const accessToken = sessionData?.session?.access_token;
+      
+      const headers: HeadersInit = {
+        'Content-Type': 'application/json',
+      };
+      
+      // Add auth token if available
+      if (accessToken) {
+        headers['Authorization'] = `Bearer ${accessToken}`;
+        console.log('Including authentication token in save request');
+      } else {
+        console.log('No authentication token available, saving as anonymous trip');
+      }
+      
       // Send itinerary to the save-trip API endpoint
       const response = await fetch('/api/save-trip', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers,
         body: JSON.stringify(tripData),
       });
       
@@ -322,174 +403,185 @@ export default function GeneratedTripPage() {
   };
 
   useEffect(() => {
-    // Try to get the itinerary from localStorage
-    try {
-      console.log('Attempting to load itinerary from localStorage...');
-      const savedItinerary = localStorage.getItem('generatedItinerary');
-      
-      // Check if we're on a mobile device
-      const isMobile = typeof window !== 'undefined' && /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-      if (isMobile) {
-        console.log('Mobile device detected, using additional validation');
-      }
-      
-      if (!savedItinerary) {
-        console.log('No itinerary found in localStorage');
-        router.push('/trips/new');
+    const loadTrip = async () => {
+      // If we have a trip ID in the URL, try to load that trip from the database
+      if (tripId) {
+        console.log(`Trip ID found in URL: ${tripId}, loading from database...`);
+        await loadTripFromDatabase(tripId);
         return;
       }
       
-      console.log('Found itinerary in localStorage');
-      
-      // Length check - if too short, it's likely corrupted
-      if (savedItinerary.length < 100) {
-        console.error('Itinerary data too short, likely corrupted');
-        localStorage.removeItem('generatedItinerary'); // Clear corrupt data
-        router.push('/trips/new');
-        return;
-      }
-      
-      console.log('First 100 characters:', savedItinerary.substring(0, 100));
-      console.log('Last 100 characters:', savedItinerary.substring(savedItinerary.length - 100));
-      
-      // Check if it's valid JSON format
-      const jsonCheck = savedItinerary.trim();
-      const startsWithBrace = jsonCheck.startsWith('{');
-      const endsWithBrace = jsonCheck.endsWith('}');
-      
-      console.log('JSON validation check - starts with {:', startsWithBrace, ', ends with }:', endsWithBrace);
-      
-      if (!startsWithBrace || !endsWithBrace) {
-        console.error('Itinerary data not valid JSON format');
-        localStorage.removeItem('generatedItinerary'); // Clear invalid data
-        router.push('/trips/new');
-        return;
-      }
-      
+      // Otherwise, try to get the itinerary from localStorage
       try {
-        const parsedItinerary = JSON.parse(savedItinerary);
-        console.log('Successfully parsed itinerary from localStorage');
+        console.log('No trip ID in URL, attempting to load itinerary from localStorage...');
+        const savedItinerary = localStorage.getItem('generatedItinerary');
         
-        // Validate essential data structure
-        if (!parsedItinerary || typeof parsedItinerary !== 'object') {
-          throw new Error('Parsed itinerary is not an object');
+        // Check if we're on a mobile device
+        const isMobile = typeof window !== 'undefined' && /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+        if (isMobile) {
+          console.log('Mobile device detected, using additional validation');
         }
         
-        console.log('Itinerary structure:', Object.keys(parsedItinerary).join(', '));
-        
-        // Check for expected structure
-        if (!parsedItinerary.days) {
-          console.error('Missing days array in parsed itinerary');
-          localStorage.removeItem('generatedItinerary'); // Clear invalid data
-          router.push('/trips/new');
-          return;
-        } 
-        
-        if (!Array.isArray(parsedItinerary.days)) {
-          console.error('Days property exists but is not an array:', typeof parsedItinerary.days);
-          localStorage.removeItem('generatedItinerary'); // Clear invalid data
-          router.push('/trips/new');
-          return;
-        } 
-        
-        if (parsedItinerary.days.length === 0) {
-          console.error('Days array is empty');
-          localStorage.removeItem('generatedItinerary'); // Clear invalid data
+        if (!savedItinerary) {
+          console.log('No itinerary found in localStorage');
           router.push('/trips/new');
           return;
         }
         
-        // Verify dates are present
-        if (!parsedItinerary.dates && (!parsedItinerary.startDate || !parsedItinerary.endDate)) {
-          console.error('Missing date information in parsed itinerary');
-          // Try to reconstruct from days if available
-          if (parsedItinerary.days[0]?.date && parsedItinerary.days[parsedItinerary.days.length-1]?.date) {
-            parsedItinerary.dates = {
-              start: parsedItinerary.days[0].date,
-              end: parsedItinerary.days[parsedItinerary.days.length-1].date
-            };
-            parsedItinerary.startDate = parsedItinerary.days[0].date;
-            parsedItinerary.endDate = parsedItinerary.days[parsedItinerary.days.length-1].date;
-            console.log('Reconstructed missing dates from day data');
-          } else {
-            console.error('Cannot reconstruct dates, itinerary invalid');
-            localStorage.removeItem('generatedItinerary');
+        console.log('Found itinerary in localStorage');
+        
+        // Length check - if too short, it's likely corrupted
+        if (savedItinerary.length < 100) {
+          console.error('Itinerary data too short, likely corrupted');
+          localStorage.removeItem('generatedItinerary'); // Clear corrupt data
+          router.push('/trips/new');
+          return;
+        }
+        
+        console.log('First 100 characters:', savedItinerary.substring(0, 100));
+        console.log('Last 100 characters:', savedItinerary.substring(savedItinerary.length - 100));
+        
+        // Check if it's valid JSON format
+        const jsonCheck = savedItinerary.trim();
+        const startsWithBrace = jsonCheck.startsWith('{');
+        const endsWithBrace = jsonCheck.endsWith('}');
+        
+        console.log('JSON validation check - starts with {:', startsWithBrace, ', ends with }:', endsWithBrace);
+        
+        if (!startsWithBrace || !endsWithBrace) {
+          console.error('Itinerary data not valid JSON format');
+          localStorage.removeItem('generatedItinerary'); // Clear invalid data
+          router.push('/trips/new');
+          return;
+        }
+        
+        try {
+          const parsedItinerary = JSON.parse(savedItinerary);
+          console.log('Successfully parsed itinerary from localStorage');
+          
+          // Validate essential data structure
+          if (!parsedItinerary || typeof parsedItinerary !== 'object') {
+            throw new Error('Parsed itinerary is not an object');
+          }
+          
+          console.log('Itinerary structure:', Object.keys(parsedItinerary).join(', '));
+          
+          // Check for expected structure
+          if (!parsedItinerary.days) {
+            console.error('Missing days array in parsed itinerary');
+            localStorage.removeItem('generatedItinerary'); // Clear invalid data
+            router.push('/trips/new');
+            return;
+          } 
+          
+          if (!Array.isArray(parsedItinerary.days)) {
+            console.error('Days property exists but is not an array:', typeof parsedItinerary.days);
+            localStorage.removeItem('generatedItinerary'); // Clear invalid data
+            router.push('/trips/new');
+            return;
+          } 
+          
+          if (parsedItinerary.days.length === 0) {
+            console.error('Days array is empty');
+            localStorage.removeItem('generatedItinerary'); // Clear invalid data
             router.push('/trips/new');
             return;
           }
-        }
-        
-        console.log(`Successfully loaded itinerary with ${parsedItinerary.days.length} days`);
-        
-        // Log the structure of the first day to help diagnose issues
-        if (parsedItinerary.days[0]) {
-          console.log('First day structure:', Object.keys(parsedItinerary.days[0]).join(', '));
-          console.log('First day has activities:', Array.isArray(parsedItinerary.days[0].activities), 
-            parsedItinerary.days[0].activities ? parsedItinerary.days[0].activities.length : 0);
           
-          // Debug coordinates specifically
-          if (parsedItinerary.days[0].activities && parsedItinerary.days[0].activities.length > 0) {
-            const firstActivity = parsedItinerary.days[0].activities[0];
-            console.log('First activity properties:', Object.keys(firstActivity).join(', '));
-            console.log('First activity coordinates exists:', !!firstActivity.coordinates);
-            if (firstActivity.coordinates) {
-              console.log('Coordinates type:', typeof firstActivity.coordinates);
-              console.log('Coordinates structure:', JSON.stringify(firstActivity.coordinates));
-              console.log('Coordinates lat/lng values:', 
-                firstActivity.coordinates.lat, 
-                firstActivity.coordinates.lng);
-              console.log('Are lat/lng valid numbers:', 
-                !isNaN(Number(firstActivity.coordinates.lat)) && isFinite(Number(firstActivity.coordinates.lat)),
-                !isNaN(Number(firstActivity.coordinates.lng)) && isFinite(Number(firstActivity.coordinates.lng))
-              );
+          // Verify dates are present
+          if (!parsedItinerary.dates && (!parsedItinerary.startDate || !parsedItinerary.endDate)) {
+            console.error('Missing date information in parsed itinerary');
+            // Try to reconstruct from days if available
+            if (parsedItinerary.days[0]?.date && parsedItinerary.days[parsedItinerary.days.length-1]?.date) {
+              parsedItinerary.dates = {
+                start: parsedItinerary.days[0].date,
+                end: parsedItinerary.days[parsedItinerary.days.length-1].date
+              };
+              parsedItinerary.startDate = parsedItinerary.days[0].date;
+              parsedItinerary.endDate = parsedItinerary.days[parsedItinerary.days.length-1].date;
+              console.log('Reconstructed missing dates from day data');
+            } else {
+              console.error('Cannot reconstruct dates, itinerary invalid');
+              localStorage.removeItem('generatedItinerary');
+              router.push('/trips/new');
+              return;
             }
           }
+          
+          console.log(`Successfully loaded itinerary with ${parsedItinerary.days.length} days`);
+          
+          // Log the structure of the first day to help diagnose issues
+          if (parsedItinerary.days[0]) {
+            console.log('First day structure:', Object.keys(parsedItinerary.days[0]).join(', '));
+            console.log('First day has activities:', Array.isArray(parsedItinerary.days[0].activities), 
+              parsedItinerary.days[0].activities ? parsedItinerary.days[0].activities.length : 0);
+            
+            // Debug coordinates specifically
+            if (parsedItinerary.days[0].activities && parsedItinerary.days[0].activities.length > 0) {
+              const firstActivity = parsedItinerary.days[0].activities[0];
+              console.log('First activity properties:', Object.keys(firstActivity).join(', '));
+              console.log('First activity coordinates exists:', !!firstActivity.coordinates);
+              if (firstActivity.coordinates) {
+                console.log('Coordinates type:', typeof firstActivity.coordinates);
+                console.log('Coordinates structure:', JSON.stringify(firstActivity.coordinates));
+                console.log('Coordinates lat/lng values:', 
+                  firstActivity.coordinates.lat, 
+                  firstActivity.coordinates.lng);
+                console.log('Are lat/lng valid numbers:', 
+                  !isNaN(Number(firstActivity.coordinates.lat)) && isFinite(Number(firstActivity.coordinates.lat)),
+                  !isNaN(Number(firstActivity.coordinates.lng)) && isFinite(Number(firstActivity.coordinates.lng))
+                );
+              }
+            }
+          }
+          
+          // If necessary fields are missing, try to repair
+          if (!parsedItinerary.title && !parsedItinerary.tripName) {
+            parsedItinerary.title = parsedItinerary.destination ? 
+              `Trip to ${parsedItinerary.destination}` : 'My Trip';
+            parsedItinerary.tripName = parsedItinerary.title;
+            console.log('Added missing title/tripName:', parsedItinerary.title);
+          }
+          
+          // Apply validation and structure fixes
+          const validatedItinerary = ensureValidCoordinates(parsedItinerary);
+          
+          // Save the validated itinerary back to localStorage
+          localStorage.setItem('generatedItinerary', JSON.stringify(validatedItinerary));
+          console.log('Saved validated itinerary back to localStorage');
+          
+          setItinerary(validatedItinerary);
+          
+          // Only save to Supabase if it hasn't been saved already
+          if (!validatedItinerary.saved_trip_id) {
+            console.log('No saved_trip_id found, saving to Supabase');
+            saveTrip(validatedItinerary);
+          } else {
+            console.log('Trip already has saved_trip_id, skipping save:', validatedItinerary.saved_trip_id);
+          }
+          
+        } catch (parseError) {
+          console.error('Error parsing itinerary JSON:', parseError);
+          // Clear the invalid data
+          localStorage.removeItem('generatedItinerary');
+          router.push('/trips/new');
         }
-        
-        // If necessary fields are missing, try to repair
-        if (!parsedItinerary.title && !parsedItinerary.tripName) {
-          parsedItinerary.title = parsedItinerary.destination ? 
-            `Trip to ${parsedItinerary.destination}` : 'My Trip';
-          parsedItinerary.tripName = parsedItinerary.title;
-          console.log('Added missing title/tripName:', parsedItinerary.title);
+      } catch (error) {
+        console.error('Error accessing localStorage:', error);
+        // Try to safely clear the problematic data
+        try {
+          localStorage.removeItem('generatedItinerary');
+        } catch (clearError) {
+          console.error('Failed to clear localStorage:', clearError);
         }
-        
-        // Apply validation and structure fixes
-        const validatedItinerary = ensureValidCoordinates(parsedItinerary);
-        
-        // Save the validated itinerary back to localStorage
-        localStorage.setItem('generatedItinerary', JSON.stringify(validatedItinerary));
-        console.log('Saved validated itinerary back to localStorage');
-        
-        setItinerary(validatedItinerary);
-        
-        // Only save to Supabase if it hasn't been saved already
-        if (!validatedItinerary.saved_trip_id) {
-          console.log('No saved_trip_id found, saving to Supabase');
-          saveTrip(validatedItinerary);
-        } else {
-          console.log('Trip already has saved_trip_id, skipping save:', validatedItinerary.saved_trip_id);
-        }
-        
-      } catch (parseError) {
-        console.error('Error parsing itinerary JSON:', parseError);
-        // Clear the invalid data
-        localStorage.removeItem('generatedItinerary');
         router.push('/trips/new');
+      } finally {
+        setIsLoading(false);
       }
-    } catch (error) {
-      console.error('Error accessing localStorage:', error);
-      // Try to safely clear the problematic data
-      try {
-        localStorage.removeItem('generatedItinerary');
-      } catch (clearError) {
-        console.error('Failed to clear localStorage:', clearError);
-      }
-      router.push('/trips/new');
-    } finally {
-      setIsLoading(false);
-    }
-  }, [router]);
+    };
+    
+    loadTrip();
+  }, [router, tripId]);
 
   // Handler for edit button
   const handleEditTrip = () => {
@@ -501,12 +593,34 @@ export default function GeneratedTripPage() {
     alert('Sharing functionality would be implemented here in a real application.');
   };
 
+  // Show loading state
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center min-h-[70vh]">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-primary mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading your itinerary...</p>
+      <div className="flex flex-col items-center justify-center min-h-[50vh]">
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-primary mb-4"></div>
+        <p className="text-gray-600">Loading your trip...</p>
+      </div>
+    );
+  }
+  
+  // Show error state
+  if (loadError) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[50vh] p-6 bg-red-50 rounded-lg">
+        <p className="text-red-600 font-semibold mb-4">Failed to load trip: {loadError}</p>
+        <div className="flex gap-4">
+          <button 
+            onClick={() => window.location.reload()}
+            className="px-4 py-2 bg-primary text-white rounded-md hover:bg-opacity-90"
+          >
+            Try Again
+          </button>
+          <button 
+            onClick={() => router.push('/trips/new')}
+            className="px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-opacity-90"
+          >
+            Create New Trip
+          </button>
         </div>
       </div>
     );

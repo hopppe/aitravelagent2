@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { supabase } from '../../../lib/supabase';
 import { createLogger } from '../../../lib/logger';
+import { cookies } from 'next/headers';
+import { supabaseAuth, getCurrentUser } from '../../../lib/auth';
 
 // Initialize logger
 const logger = createLogger('save-trip-api');
@@ -22,6 +24,29 @@ export async function POST(request: Request) {
     }
     
     logger.info('Received trip data to save');
+
+    // Try to get user ID if user is authenticated
+    let userId = null;
+    try {
+      // Get auth header from request
+      const authHeader = request.headers.get('Authorization');
+      
+      if (authHeader && authHeader.startsWith('Bearer ')) {
+        const token = authHeader.split(' ')[1];
+        
+        // Verify the token and get user
+        const { data, error } = await supabaseAuth.auth.getUser(token);
+        
+        if (!error && data?.user) {
+          userId = data.user.id;
+          logger.info(`User authenticated with ID: ${userId}`);
+        }
+      } else {
+        logger.info('No authentication token provided');
+      }
+    } catch (authError) {
+      logger.error('Error verifying authentication:', authError);
+    }
     
     // Generate a unique ID for the trip
     const tripId = `trip_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
@@ -33,14 +58,21 @@ export async function POST(request: Request) {
     if (tripData.saved_trip_id) {
       logger.info(`Trip already has ID ${tripData.saved_trip_id}, updating instead of inserting`);
       
+      const updateData: any = {
+        trip_data: tripData,
+        prompt: prompt,
+        updated_at: new Date().toISOString()
+      };
+      
+      // If we have a user ID, add it to the update
+      if (userId) {
+        updateData.user_id = userId;
+      }
+      
       // Update existing trip
       const { error: updateError } = await supabase
         .from('trips')
-        .update({
-          trip_data: tripData,
-          prompt: prompt,
-          updated_at: new Date().toISOString()
-        })
+        .update(updateData)
         .eq('id', tripData.saved_trip_id);
       
       if (updateError) {
@@ -65,16 +97,27 @@ export async function POST(request: Request) {
       });
     }
     
+    // Prepare data for insertion
+    const insertData: any = {
+      id: tripId,
+      trip_data: tripData,
+      prompt: prompt,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    };
+    
+    // If we have a user ID, add it to the insert
+    if (userId) {
+      insertData.user_id = userId;
+      logger.info(`Associating trip with user ID: ${userId}`);
+    } else {
+      logger.info('No user ID available, creating anonymous trip');
+    }
+    
     // Insert new trip
     const { error } = await supabase
       .from('trips')
-      .insert({
-        id: tripId,
-        trip_data: tripData,
-        prompt: prompt,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      });
+      .insert(insertData);
     
     if (error) {
       logger.error('Failed to save trip:', error);
@@ -100,6 +143,7 @@ export async function POST(request: Request) {
               id TEXT PRIMARY KEY,
               trip_data JSONB NOT NULL,
               prompt TEXT,
+              user_id UUID REFERENCES auth.users(id),
               created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
               updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
             );
@@ -115,13 +159,7 @@ export async function POST(request: Request) {
             // Try inserting again
             const { error: retryError } = await supabase
               .from('trips')
-              .insert({
-                id: tripId,
-                trip_data: tripData,
-                prompt: prompt,
-                created_at: new Date().toISOString(),
-                updated_at: new Date().toISOString()
-              });
+              .insert(insertData);
             
             if (retryError) {
               logger.error('Failed on retry after table creation:', retryError);
