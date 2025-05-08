@@ -7,9 +7,9 @@ import { validateItineraryStructure } from '../../lib/itinerary-validator';
 import { processItineraryError, getItineraryTroubleshootingTips, logItineraryError } from '../../lib/itinerary-error-handler';
 
 // Define the survey steps
-type SurveyStep = 'destination' | 'dates' | 'purpose' | 'budget' | 'preferences';
+type SurveyStep = 'destination' | 'dates' | 'purpose' | 'budget' | 'preferences' | 'specialRequests';
 
-// Define preference categories and options
+// Define preference categories and options - simplified
 const preferenceOptions = [
   { id: 'nature', label: 'Nature & Outdoors' },
   { id: 'culture', label: 'Culture & Arts' },
@@ -17,27 +17,23 @@ const preferenceOptions = [
   { id: 'adventure', label: 'Adventure Activities' },
   { id: 'relaxation', label: 'Relaxation & Wellness' },
   { id: 'history', label: 'History & Landmarks' },
-  { id: 'nightlife', label: 'Nightlife & Entertainment' },
-  { id: 'shopping', label: 'Shopping' },
-  { id: 'family', label: 'Family-friendly Activities' },
+  { id: 'entertainment', label: 'Entertainment' },
 ];
 
-// Define trip purpose options
+// Define trip purpose options - simplified
 const tripPurposeOptions = [
   { id: 'vacation', label: 'Vacation' },
   { id: 'honeymoon', label: 'Honeymoon' },
   { id: 'family', label: 'Family Trip' },
   { id: 'solo', label: 'Solo Adventure' },
   { id: 'business', label: 'Business Trip' },
-  { id: 'weekend', label: 'Weekend Getaway' },
-  { id: 'roadtrip', label: 'Road Trip' },
 ];
 
-// Budget range options
+// Budget range options - simplified with clearer descriptions
 const budgetOptions = [
-  { id: 'budget', label: 'Budget-friendly', description: 'Economical options, hostels, street food' },
-  { id: 'moderate', label: 'Moderate', description: 'Mid-range hotels, some nice restaurants' },
-  { id: 'luxury', label: 'Luxury', description: 'High-end hotels, fine dining, premium experiences' },
+  { id: 'budget', label: 'Budget-friendly', description: 'Hostels, public transit, affordable dining' },
+  { id: 'moderate', label: 'Moderate', description: 'Mid-range hotels, mix of restaurants' },
+  { id: 'luxury', label: 'Luxury', description: 'Premium hotels, experiences, and dining' },
 ];
 
 // Progress indicator component
@@ -47,26 +43,30 @@ function Progress({ currentStep }: { currentStep: SurveyStep }) {
     { id: 'dates', label: 'Dates' },
     { id: 'purpose', label: 'Purpose' },
     { id: 'budget', label: 'Budget' },
-    { id: 'preferences', label: 'Preferences' }
+    { id: 'preferences', label: 'Interests' },
+    { id: 'specialRequests', label: 'Requests' }
   ];
   
+  // Calculate current step index
+  const currentStepIndex = steps.findIndex(step => step.id === currentStep);
+  
   return (
-    <div className="flex justify-between">
+    <div className="flex justify-between md:px-4">
       {steps.map((step, index) => (
         <div 
           key={step.id} 
-          className={`flex flex-col items-center ${index > 0 ? 'ml-2' : ''}`}
+          className={`flex flex-col items-center ${index > 0 ? 'ml-1 md:ml-3' : ''}`}
         >
           <div 
-            className={`w-8 h-8 flex items-center justify-center rounded-full 
+            className={`w-10 h-10 md:w-12 md:h-12 flex items-center justify-center rounded-full text-sm md:text-base
               ${currentStep === step.id ? 'bg-primary text-white' : 
-                steps.indexOf({ id: currentStep } as any) > index ? 
+                index < currentStepIndex ? 
                 'bg-green-500 text-white' : 'bg-gray-200 text-gray-500'}`}
           >
-            {steps.indexOf({ id: currentStep } as any) > index ? 
+            {index < currentStepIndex ? 
               '✓' : (index + 1)}
           </div>
-          <span className="text-xs mt-1">{step.label}</span>
+          <span className="text-[10px] md:text-xs mt-1 md:mt-2 hidden sm:block">{step.label}</span>
         </div>
       ))}
     </div>
@@ -85,6 +85,7 @@ export default function TripSurveyForm() {
     purpose: '',
     budget: '',
     preferences: [] as string[],
+    specialRequests: '',
   });
   
   // Add loading and job tracking state
@@ -139,6 +140,9 @@ export default function TripSurveyForm() {
         if (formData.budget) setCurrentStep('preferences');
         break;
       case 'preferences':
+        setCurrentStep('specialRequests');
+        break;
+      case 'specialRequests':
         // Submit the form
         handleSubmit();
         break;
@@ -152,6 +156,7 @@ export default function TripSurveyForm() {
       case 'purpose': setCurrentStep('dates'); break;
       case 'budget': setCurrentStep('purpose'); break;
       case 'preferences': setCurrentStep('budget'); break;
+      case 'specialRequests': setCurrentStep('preferences'); break;
     }
   };
 
@@ -251,7 +256,7 @@ export default function TripSurveyForm() {
                 type="text"
                 value={formData.destination}
                 onChange={handleInputChange}
-                className="w-full p-3 border border-gray-300 rounded-md focus:ring-primary focus:border-primary"
+                className="w-full p-4 border border-gray-300 rounded-md focus:ring-primary focus:border-primary text-base"
                 placeholder="City, country, or region"
                 required
               />
@@ -274,7 +279,7 @@ export default function TripSurveyForm() {
                   type="date"
                   value={formData.startDate}
                   onChange={handleInputChange}
-                  className="w-full p-4 text-lg focus:ring-primary focus:border-primary calendar-input"
+                  className="w-full p-4 text-base focus:ring-primary focus:border-primary calendar-input"
                   required
                 />
               </div>
@@ -288,7 +293,7 @@ export default function TripSurveyForm() {
                   type="date"
                   value={formData.endDate}
                   onChange={handleInputChange}
-                  className="w-full p-4 text-lg focus:ring-primary focus:border-primary calendar-input"
+                  className="w-full p-4 text-base focus:ring-primary focus:border-primary calendar-input"
                   required
                 />
               </div>
@@ -301,12 +306,12 @@ export default function TripSurveyForm() {
         return (
           <div className="space-y-4">
             <h2 className="text-xl font-semibold">What's the purpose of your trip?</h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {tripPurposeOptions.map(option => (
                 <div
                   key={option.id}
                   className={`
-                    p-4 border rounded-md cursor-pointer transition-all
+                    p-4 border rounded-md cursor-pointer transition-all min-h-[44px]
                     ${formData.purpose === option.id 
                       ? 'border-primary bg-primary bg-opacity-10' 
                       : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
@@ -315,12 +320,12 @@ export default function TripSurveyForm() {
                   onClick={() => handleRadioChange('purpose', option.id)}
                 >
                   <div className="flex items-center">
-                    <div className="h-4 w-4 flex items-center justify-center">
+                    <div className="h-5 w-5 flex items-center justify-center">
                       <div 
-                        className={`rounded-full ${formData.purpose === option.id ? 'h-4 w-4 bg-primary' : 'h-3 w-3 border border-gray-400'}`}
+                        className={`rounded-full ${formData.purpose === option.id ? 'h-4 w-4 bg-primary' : 'h-4 w-4 border border-gray-400'}`}
                       ></div>
                     </div>
-                    <span className="ml-2 text-sm font-medium text-gray-700">
+                    <span className="ml-3 text-base font-medium text-gray-700">
                       {option.label}
                     </span>
                   </div>
@@ -334,12 +339,12 @@ export default function TripSurveyForm() {
         return (
           <div className="space-y-4">
             <h2 className="text-xl font-semibold">What's your budget range?</h2>
-            <div className="space-y-3">
+            <div className="space-y-4">
               {budgetOptions.map(option => (
                 <div
                   key={option.id}
                   className={`
-                    p-4 border rounded-md cursor-pointer transition-all
+                    p-4 border rounded-md cursor-pointer transition-all min-h-[60px]
                     ${formData.budget === option.id 
                       ? 'border-primary bg-primary bg-opacity-10' 
                       : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
@@ -348,16 +353,16 @@ export default function TripSurveyForm() {
                   onClick={() => handleRadioChange('budget', option.id)}
                 >
                   <div className="flex items-start">
-                    <div className="h-4 w-4 mt-1 flex items-center justify-center">
+                    <div className="h-5 w-5 mt-1 flex items-center justify-center">
                       <div 
-                        className={`rounded-full ${formData.budget === option.id ? 'h-4 w-4 bg-primary' : 'h-3 w-3 border border-gray-400'}`}
+                        className={`rounded-full ${formData.budget === option.id ? 'h-4 w-4 bg-primary' : 'h-4 w-4 border border-gray-400'}`}
                       ></div>
                     </div>
-                    <div className="ml-2">
-                      <span className="text-sm font-medium text-gray-700">
+                    <div className="ml-3">
+                      <span className="text-base font-medium text-gray-700">
                         {option.label}
                       </span>
-                      <p className="text-sm text-gray-500">{option.description}</p>
+                      <p className="text-sm text-gray-500 mt-1">{option.description}</p>
                     </div>
                   </div>
                 </div>
@@ -369,15 +374,15 @@ export default function TripSurveyForm() {
       case 'preferences':
         return (
           <div className="space-y-4">
-            <h2 className="text-xl font-semibold">What do you enjoy when traveling?</h2>
-            <p className="text-gray-600 text-sm">Select all that apply. This helps us tailor your itinerary.</p>
+            <h2 className="text-xl font-semibold">What are you interested in?</h2>
+            <p className="text-gray-600 text-sm">Select all that apply. This helps us personalize your trip.</p>
             
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               {preferenceOptions.map(option => (
                 <div
                   key={option.id}
                   className={`
-                    p-3 border rounded-md cursor-pointer transition-all
+                    p-4 border rounded-md cursor-pointer transition-all min-h-[44px]
                     ${formData.preferences.includes(option.id) 
                       ? 'border-primary bg-primary bg-opacity-10' 
                       : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
@@ -386,14 +391,14 @@ export default function TripSurveyForm() {
                   onClick={() => handlePreferenceToggle(option.id)}
                 >
                   <div className="flex items-center">
-                    <div className="h-4 w-4 flex items-center justify-center">
+                    <div className="h-5 w-5 flex items-center justify-center">
                       <div 
                         className={`${formData.preferences.includes(option.id) 
-                          ? 'h-3 w-3 bg-primary rounded-sm' 
-                          : 'h-3 w-3 border border-gray-400 rounded-sm'}`}
+                          ? 'h-4 w-4 bg-primary rounded-sm' 
+                          : 'h-4 w-4 border border-gray-400 rounded-sm'}`}
                       ></div>
                     </div>
-                    <span className="ml-2 text-sm font-medium text-gray-700">
+                    <span className="ml-3 text-base font-medium text-gray-700">
                       {option.label}
                     </span>
                   </div>
@@ -402,12 +407,34 @@ export default function TripSurveyForm() {
             </div>
           </div>
         );
+
+      case 'specialRequests':
+        return (
+          <div className="space-y-4">
+            <h2 className="text-xl font-semibold">Any special requests?</h2>
+            <p className="text-gray-600 text-sm">Let us know if you have specific activities or experiences in mind.</p>
+            
+            <div>
+              <label htmlFor="specialRequests" className="block text-sm font-medium text-gray-700 mb-1">
+                Special Requests (Optional)
+              </label>
+              <textarea
+                id="specialRequests"
+                name="specialRequests"
+                value={formData.specialRequests}
+                onChange={(e) => setFormData({ ...formData, specialRequests: e.target.value })}
+                className="w-full p-4 min-h-[120px] border border-gray-300 rounded-md focus:ring-primary focus:border-primary"
+                placeholder="Examples: 'I'd like to go hiking in the mountains', 'Include a food tour', 'Stay near the beach', etc."
+              />
+            </div>
+          </div>
+        );
     }
   };
 
   // Progress indicators
-  const totalSteps = 5;
-  const currentStepIndex = ['destination', 'dates', 'purpose', 'budget', 'preferences'].indexOf(currentStep) + 1;
+  const totalSteps = 6;
+  const currentStepIndex = ['destination', 'dates', 'purpose', 'budget', 'preferences', 'specialRequests'].indexOf(currentStep) + 1;
   
   // Validate the current step
   const isCurrentStepValid = () => {
@@ -422,6 +449,8 @@ export default function TripSurveyForm() {
         return !!formData.budget;
       case 'preferences':
         return true; // Preferences are optional
+      case 'specialRequests':
+        return true; // Special requests are optional
       default:
         return false;
     }
@@ -465,9 +494,17 @@ export default function TripSurveyForm() {
       case 'preferences':
         return (
           <ul className="list-disc pl-4 space-y-1">
-            <li>Select all interests that apply to you</li>
-            <li>More selections will create a varied itinerary</li>
-            <li>AI will balance your preferences with practical scheduling</li>
+            <li>Select activities you enjoy most</li>
+            <li>This helps us prioritize your itinerary</li>
+            <li>We'll include a mix of your selections</li>
+          </ul>
+        );
+      case 'specialRequests':
+        return (
+          <ul className="list-disc pl-4 space-y-1">
+            <li>Be specific about activities you want</li>
+            <li>Mention places you'd like to visit</li>
+            <li>Include any accessibility needs</li>
           </ul>
         );
       default:
@@ -488,12 +525,12 @@ export default function TripSurveyForm() {
           {renderFormStep()}
           
           {/* Navigation buttons */}
-          <div className="mt-6 flex justify-between items-center">
+          <div className="mt-8 flex justify-between items-center">
             {currentStep !== 'destination' && (
               <button
                 type="button"
                 onClick={prevStep}
-                className="px-4 py-2 bg-gray-200 rounded-md hover:bg-gray-300"
+                className="px-6 py-3 bg-gray-200 rounded-md hover:bg-gray-300 min-w-[100px] min-h-[44px] text-base"
               >
                 Back
               </button>
@@ -503,10 +540,10 @@ export default function TripSurveyForm() {
               type="button"
               onClick={nextStep}
               disabled={isGenerating || isCurrentStepValid() === false}
-              className={`px-6 py-2 bg-primary text-white rounded-md 
+              className={`px-6 py-3 bg-primary text-white rounded-md min-w-[120px] min-h-[44px] text-base 
                 ${isGenerating || isCurrentStepValid() === false ? 'opacity-50 cursor-not-allowed' : 'hover:bg-opacity-90'}`}
             >
-              {currentStep === 'preferences' ? 'Generate Itinerary' : 'Next'}
+              {currentStep === 'specialRequests' ? 'Generate Itinerary' : 'Next'}
             </button>
           </div>
           

@@ -274,10 +274,10 @@ export default function GeneratedTripPage() {
       // The trip data is stored in trip_data property
       const tripData = data.trip.trip_data;
       
-      // Set the saved_trip_id if it doesn't exist
-      if (!tripData.saved_trip_id) {
-        tripData.saved_trip_id = id;
-      }
+      // Always ensure saved_trip_id matches the ID from the URL
+      // This guarantees we won't create duplicates
+      tripData.saved_trip_id = id;
+      console.log('Set trip ID to match URL parameter:', id);
       
       // Update state and localStorage
       setItinerary(tripData);
@@ -316,11 +316,28 @@ export default function GeneratedTripPage() {
       return;
     }
 
+    // Check for a previously saved version of this trip in localStorage
+    const previousSaveKey = 'lastSavedTripId';
+    const previousSavedId = localStorage.getItem(previousSaveKey);
+    
+    if (previousSavedId) {
+      console.log('Found previously saved trip ID in localStorage:', previousSavedId);
+      // Update the tripData with the saved ID to turn this into an update operation
+      tripData.saved_trip_id = previousSavedId;
+    }
+
     // Check if the trip is already saved to avoid duplicates
     const isUpdate = !!tripData.saved_trip_id;
     if (isUpdate) {
       console.log('Trip already saved with ID:', tripData.saved_trip_id);
       console.log('This will be an update operation rather than a new save');
+      
+      // If we're loading a trip by ID from URL, and it's the same as the saved_trip_id,
+      // we don't need to update anything as we've just loaded it
+      if (tripId && tripId === tripData.saved_trip_id) {
+        console.log('Trip was just loaded from database with the same ID, skipping save');
+        return;
+      }
     } else {
       console.log('This is a new trip save operation');
     }
@@ -386,6 +403,9 @@ export default function GeneratedTripPage() {
       // Update state and localStorage
       setItinerary(updatedItinerary);
       localStorage.setItem('generatedItinerary', JSON.stringify(updatedItinerary));
+      
+      // Store the trip ID separately to prevent future duplicate saves
+      localStorage.setItem(previousSaveKey, result.tripId);
       
       setSaveSuccess(true);
       
@@ -546,18 +566,31 @@ export default function GeneratedTripPage() {
           // Apply validation and structure fixes
           const validatedItinerary = ensureValidCoordinates(parsedItinerary);
           
+          // Check for previously saved trip ID
+          const previousSavedId = localStorage.getItem('lastSavedTripId');
+          if (previousSavedId && !validatedItinerary.saved_trip_id) {
+            console.log('Found previously saved trip ID in localStorage:', previousSavedId);
+            validatedItinerary.saved_trip_id = previousSavedId;
+          }
+          
           // Save the validated itinerary back to localStorage
           localStorage.setItem('generatedItinerary', JSON.stringify(validatedItinerary));
           console.log('Saved validated itinerary back to localStorage');
           
           setItinerary(validatedItinerary);
           
-          // Only save to Supabase if it hasn't been saved already
-          if (!validatedItinerary.saved_trip_id) {
-            console.log('No saved_trip_id found, saving to Supabase');
+          // Only save to Supabase if it hasn't been saved already AND there is no tripId in URL
+          // AND there's no lastSavedTripId in localStorage
+          const shouldSave = !validatedItinerary.saved_trip_id && 
+                            !tripId && 
+                            !previousSavedId;
+          
+          if (shouldSave) {
+            console.log('No saved_trip_id found and no previous saves detected, saving to Supabase');
             saveTrip(validatedItinerary);
           } else {
-            console.log('Trip already has saved_trip_id, skipping save:', validatedItinerary.saved_trip_id);
+            console.log('Trip already has saved_trip_id or previous save detected, skipping new save:', 
+              validatedItinerary.saved_trip_id || previousSavedId || tripId);
           }
           
         } catch (parseError) {
@@ -680,7 +713,7 @@ export default function GeneratedTripPage() {
           days={itinerary.days} 
           budget={normalizedBudget}
           title={itinerary.title || itinerary.tripName} 
-          summary={itinerary.summary}
+          summary={itinerary.overview || itinerary.description || itinerary.tripDescription || itinerary.summary}
           travelTips={itinerary.travelTips}
         />
       </Suspense>

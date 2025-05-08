@@ -65,7 +65,7 @@ export async function POST(request: Request) {
           messages: [
             {
               role: 'system',
-              content: 'You are an expert travel planner with deep knowledge of destinations worldwide. Generate a personalized travel itinerary based on the user\'s preferences. Return your response in a structured JSON format only, with no additional text. Ensure all property names use double quotes. Every location MUST include high-precision "coordinates" with "lat" and "lng" numerical values with exactly 6 decimal places for accuracy. For cost fields, use numerical values only without currency symbols. Consider the typical weather for the destination at the time of the trip and include appropriate recommendations, with at least one travel tip specifically about the weather.'
+              content: 'You are an expert travel planner with deep knowledge of destinations worldwide. Generate a personalized travel itinerary based on the user\'s preferences. Return your response in a structured JSON format only, with no additional text. Ensure all property names use double quotes. Every location MUST include high-precision "coordinates" with "lat" and "lng" numerical values with exactly 6 decimal places for accuracy. For cost fields, use numerical values only without currency symbols. Consider the typical weather for the destination at the time of the trip and include appropriate recommendations, with at least one travel tip specifically about the weather. For longer trips, vary the daily structure - not every day needs to be packed with activities, and breakfast is only included when there are notable breakfast places nearby. Group activities that are geographically close to minimize travel time.'
             },
             {
               role: 'user',
@@ -193,11 +193,19 @@ function generatePrompt(formData: any): string {
       budgetGuidelines = 'Include a mix of options appropriate for a moderate budget';
   }
 
+  // Include special requests if provided
+  const specialRequests = formData.specialRequests && formData.specialRequests.trim() 
+    ? `\nSpecial requests from the traveler: "${formData.specialRequests.trim()}"`
+    : '';
+
   // Construct the prompt
   return `
-Create a travel itinerary for ${formData.destination} from ${formattedStartDate} to ${formattedEndDate} (${tripDuration} days).
+Create a personalized travel itinerary for ${formData.destination} from ${formattedStartDate} to ${formattedEndDate} (${tripDuration} days).
 
-Tailor this itinerary for the traveler. Their purpose of the trip is ${formData.purpose}. Their budget is ${formData.budget} (${budgetGuidelines}). ${formData.preferences && formData.preferences.length > 0 ? `They like ${formData.preferences.join(', ')}, so include more of those activities.` : ''}
+Tailor this itinerary for the traveler. Their purpose of the trip is ${formData.purpose}. Their budget is ${formData.budget} (${budgetGuidelines}). ${formData.preferences && formData.preferences.length > 0 ? `They like ${formData.preferences.join(', ')}` : ''} 
+Special requests: ${specialRequests}
+
+For longer trips, vary the daily structure - not every day needs to be packed with activities. Some days can have fewer activities than others, and breakfast is only needed when there are notable breakfast places nearby. When activities are in the same area, group them together on the same day to minimize travel time.
 
 Return a JSON itinerary with this structure:
 {
@@ -245,15 +253,15 @@ Return a JSON itinerary with this structure:
 }
 
 IMPORTANT GUIDELINES:
-1. Return only valid JSON
-2. All coordinates must be precise numeric values with exactly 6 decimal places for accuracy (e.g., 40.123456, -74.123456)
-3. All costs must be numbers
-4. Include both activities AND meals in each day
-5. Provide precise, real-world locations that exist
-6. Activities should make geographic sense (grouped by area when possible)
-7. Include accurate transportMode and transportCost for each activity and meal
-8. Make recommendations suitable for the typical weather at the destination during that time of year
-9. Include at least one travel tip specifically about the weather and what to prepare for`;
+1. Return only valid JSON. Do not include any extra text, markdown, or explanation.
+2. All coordinates must be numeric values with exactly 6 decimal places (e.g., 40.123456, -74.123456).
+3. All costs must be numbers only, with no currency symbols.
+4. Each day must include both activities and meals.
+5. Use real places that currently exist and are appropriate for the destination and traveler's preferences.
+6. Group activities and meals geographically to minimize travel time; each day should follow a logical flow.
+7. Include correct transportMode and transportCost for each activity and meal.
+8. Ensure that travel tips include one tip specifically about the typical weather during the trip and how to prepare for it.
+9. If days have a similar structure, feel free to reuse the pattern with realistic local variation.`;
 }
 
 // Helper function to format dates in a nicer way

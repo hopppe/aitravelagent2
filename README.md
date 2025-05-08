@@ -58,7 +58,7 @@ This application is optimized for speed with a streamlined architecture:
 1. **Optimized Server-Side Calls**: A lightweight API endpoint handles OpenAI calls securely
 2. **No Background Jobs**: The response is processed immediately, without queuing or polling
 3. **Client-Side Rendering**: Itinerary is displayed in the browser as soon as it's received
-4. **Lazy Saving**: Itineraries are only saved to Supabase when the user explicitly clicks "Save Trip"
+4. **trip is automatically saved**: trip is automatically saved to supabase once the itinerary page is opened
 5. **Code Splitting**: Components are lazy-loaded for faster initial page loads
 
 ## Setup
