@@ -108,4 +108,82 @@ export async function GET(
       { status: 500 }
     );
   }
+}
+
+export async function DELETE(
+  request: Request,
+  { params }: { params: { id: string } }
+) {
+  try {
+    const tripId = params.id;
+    if (!tripId) {
+      logger.error('Missing trip ID in DELETE request');
+      return NextResponse.json(
+        { error: 'Missing trip ID' },
+        { status: 400 }
+      );
+    }
+
+    // Get user ID from auth header
+    let userId = null;
+    try {
+      const authHeader = request.headers.get('Authorization');
+      if (authHeader && authHeader.startsWith('Bearer ')) {
+        const token = authHeader.split(' ')[1];
+        const { data, error } = await supabaseAuth.auth.getUser(token);
+        if (!error && data?.user) userId = data.user.id;
+      }
+    } catch (authError) {
+      logger.error('Error verifying authentication:', authError);
+    }
+    if (!userId) {
+      logger.warn('DELETE denied: No authenticated user');
+      return NextResponse.json(
+        { error: 'Authentication required' },
+        { status: 401 }
+      );
+    }
+
+    // Fetch the trip to check ownership
+    const { data: trip, error: fetchError } = await supabase
+      .from('trips')
+      .select('user_id')
+      .eq('id', tripId)
+      .single();
+    if (fetchError || !trip) {
+      logger.error('Trip not found or fetch error in DELETE:', fetchError);
+      return NextResponse.json(
+        { error: 'Trip not found' },
+        { status: 404 }
+      );
+    }
+    if (trip.user_id !== userId) {
+      logger.warn(`DELETE denied: User ${userId} does not own trip ${tripId}`);
+      return NextResponse.json(
+        { error: 'You do not have permission to delete this trip' },
+        { status: 403 }
+      );
+    }
+
+    // Delete the trip
+    const { error: deleteError } = await supabase
+      .from('trips')
+      .delete()
+      .eq('id', tripId);
+    if (deleteError) {
+      logger.error('Error deleting trip:', deleteError);
+      return NextResponse.json(
+        { error: 'Failed to delete trip' },
+        { status: 500 }
+      );
+    }
+    logger.info(`Trip ${tripId} deleted by user ${userId}`);
+    return NextResponse.json({ success: true });
+  } catch (error: any) {
+    logger.error('Error in DELETE handler:', error);
+    return NextResponse.json(
+      { error: `Server error: ${error.message}` },
+      { status: 500 }
+    );
+  }
 } 

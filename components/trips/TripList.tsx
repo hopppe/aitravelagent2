@@ -4,9 +4,11 @@ import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { FaCalendarAlt, FaMapMarkerAlt } from 'react-icons/fa';
+import { FiX } from 'react-icons/fi';
 import { useAuth } from '../../hooks/useAuth';
 import { useRouter } from 'next/navigation';
 import { supabaseAuth } from '../../lib/auth';
+import { useTripPhoto } from '../../hooks/use-trip-photo';
 
 // Define the Trip type
 interface Trip {
@@ -31,6 +33,8 @@ export default function TripList({ redirectIfUnauthenticated = false }: TripList
   const [trips, setTrips] = useState<Trip[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const router = useRouter();
   
   // Fetch user trips from the API
@@ -151,11 +155,39 @@ export default function TripList({ redirectIfUnauthenticated = false }: TripList
     );
   }
   
+  // Delete trip handler
+  async function handleDeleteTrip(tripId: string) {
+    if (!user) return;
+    setDeletingId(tripId);
+    setDeleteError(null);
+    try {
+      // Get auth session from Supabase
+      const { data: sessionData } = await supabaseAuth.auth.getSession();
+      const accessToken = sessionData?.session?.access_token;
+      if (!accessToken) throw new Error('No access token');
+      const res = await fetch(`/api/trips/${tripId}`, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${accessToken}`
+        }
+      });
+      const result = await res.json();
+      if (!res.ok || !result.success) throw new Error(result.error || 'Failed to delete trip');
+      // Remove trip from state
+      setTrips((prev) => prev.filter((t) => t.id !== tripId));
+    } catch (err: any) {
+      setDeleteError(err?.message || 'Failed to delete trip');
+    } finally {
+      setDeletingId(null);
+    }
+  }
+  
   // Show error state (only for non-authentication errors)
-  if (error) {
+  if (error || deleteError) {
     return (
       <div className="text-center py-8 bg-red-50 rounded-lg border border-red-200">
-        <p className="text-red-500">Error: {error}</p>
+        <p className="text-red-500">Error: {error || deleteError}</p>
         <button 
           onClick={() => window.location.reload()}
           className="mt-4 inline-flex items-center gap-2 bg-primary hover:bg-opacity-90 text-white font-bold py-2 px-4 rounded-md transition-all"
@@ -205,33 +237,126 @@ export default function TripList({ redirectIfUnauthenticated = false }: TripList
     );
   }
 
+  // Log trip count
+  console.log(`[TripList] Rendering ${trips.length} trips`);
+  
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-      {trips.map((trip) => (
-        <Link 
-          key={trip.id} 
-          href={`/trips/generated-trip?id=${trip.id}`} 
-          className="block"
-        >
-          <div className="bg-white rounded-lg shadow-md overflow-hidden hover:shadow-lg transition-shadow">
-            <div className="relative h-48 w-full bg-gray-200 flex items-center justify-center">
-              <span className="text-gray-500 font-medium">{trip.destination}</span>
-            </div>
-            <div className="p-4">
-              <h3 className="font-bold text-lg mb-1">{trip.title}</h3>
-              <p className="flex items-center text-gray-600 text-sm mb-1">
-                <FaMapMarkerAlt className="mr-1" /> {trip.destination}
-              </p>
-              <p className="flex items-center text-gray-600 text-sm mb-1">
-                <FaCalendarAlt className="mr-1" /> {formatDateRange(trip.dates.start, trip.dates.end)}
-              </p>
-              <p className="text-gray-600 text-sm">
-                {trip.days} {trip.days === 1 ? 'day' : 'days'}
-              </p>
-            </div>
+      {trips.map((trip) => {
+        console.log(`[TripList] Trip data: id=${trip.id}, destination="${trip.destination || 'undefined'}"`);
+        return (
+          <div key={trip.id} className="relative group">
+            {/* Card links to trip details */}
+            <Link 
+              href={`/trips/generated-trip?id=${trip.id}`} 
+              className="block"
+            >
+              <div className="bg-white rounded-lg shadow-md overflow-hidden hover:shadow-lg transition-shadow">
+                <div className="relative h-48 w-full bg-gray-200">
+                  {trip.destination && trip.destination.trim() !== '' ? (
+                    <TripPhoto destination={trip.destination} />
+                  ) : (
+                    <div className="w-full h-full flex flex-col items-center justify-center">
+                      <span className="text-gray-500 font-medium text-center">No destination specified</span>
+                    </div>
+                  )}
+                </div>
+                <div className="p-4">
+                  <h3 className="font-semibold text-lg text-gray-800 truncate">{trip.title}</h3>
+                  <div className="mt-2 flex items-center gap-1 text-sm text-gray-500">
+                    <FaMapMarkerAlt className="text-primary" />
+                    <span className="truncate">{trip.destination}</span>
+                  </div>
+                  {trip.dates.start && trip.dates.end && (
+                    <div className="mt-1 flex items-center gap-1 text-sm text-gray-500">
+                      <FaCalendarAlt className="text-primary" /> 
+                      <span>{formatDateRange(trip.dates.start, trip.dates.end)}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </Link>
+            {/* Delete button (subtle X, Apple style, only turns red on direct hover/focus) */}
+            <button
+              aria-label="Delete trip"
+              disabled={deletingId === trip.id}
+              onClick={() => handleDeleteTrip(trip.id)}
+              className={
+                `absolute top-2 right-2 z-10 flex items-center justify-center
+                rounded-full transition-colors
+                w-11 h-11 min-w-[44px] min-h-[44px]
+                bg-transparent
+                hover:bg-red-50 focus:bg-red-100
+                border-none
+                opacity-80 hover:opacity-100 focus:opacity-100 disabled:opacity-50`
+              }
+              style={{ pointerEvents: deletingId === trip.id ? 'none' : 'auto' }}
+            >
+              {deletingId === trip.id ? (
+                <span className="w-5 h-5 block animate-spin border-2 border-gray-400 border-t-transparent rounded-full"></span>
+              ) : (
+                // Only the icon turns red on direct hover/focus
+                <FiX className="w-6 h-6 text-gray-400 hover:text-red-500 focus:text-red-600 transition-colors" />
+              )}
+            </button>
           </div>
-        </Link>
-      ))}
+        );
+      })}
     </div>
+  );
+}
+
+function TripPhoto({ destination }: { destination: string }) {
+  // Add a secure destination with fallback
+  const secureDestination = typeof destination === 'string' && destination.trim() !== '' 
+    ? destination.trim() 
+    : 'Unknown Location';
+  
+  // Add debug logging for the destination value
+  console.log(`[TripPhoto] Rendering photo for destination: "${secureDestination}"`);
+  
+  const { photoUrl, isLoading, hasError } = useTripPhoto(secureDestination);
+  const [error, setError] = useState(false);
+  
+  useEffect(() => {
+    // Reset error state when destination or photoUrl changes
+    setError(false);
+  }, [secureDestination, photoUrl]);
+
+  if (isLoading) {
+    return (
+      <div className="w-full h-full flex items-center justify-center bg-gray-100 animate-pulse">
+        <span className="text-gray-400">Loading...</span>
+      </div>
+    );
+  }
+
+  // If there's no photo URL or an error occurred, show the destination name
+  if (hasError || !photoUrl || error) {
+    return (
+      <div className="w-full h-full flex flex-col items-center justify-center bg-gray-100">
+        <span className="text-gray-500 font-medium text-center px-4">{secureDestination}</span>
+        {(hasError || error) && <span className="text-xs text-gray-400 mt-1">Could not load image</span>}
+      </div>
+    );
+  }
+
+  // Handle the case where the photo URL is there but might be invalid
+  return (
+    <Image
+      src={photoUrl}
+      alt={`Photo of ${secureDestination}`}
+      fill
+      className="object-cover"
+      sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+      loading="lazy"
+      priority={false}
+      quality={85}
+      // Add an onError handler to show fallback when image fails to load
+      onError={() => {
+        console.error(`[TripPhoto] Error loading image for ${secureDestination}`);
+        setError(true);
+      }}
+    />
   );
 } 

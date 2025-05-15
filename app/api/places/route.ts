@@ -45,10 +45,10 @@ export async function GET(request: NextRequest) {
   const lng = parseFloat(searchParams.get('lng') || '0');
   const radius = parseInt(searchParams.get('radius') || '5000', 10);
   const type = searchParams.get('type') || 'lodging';
-  const budget = searchParams.get('budget') || 'moderate';
+  const budget = searchParams.get('budget');
   
   console.log('[Places API] Received request:');
-  console.log(`[Places API] Keyword: "${keyword}", Location: ${lat},${lng}, Budget: ${budget}, Radius: ${radius}m`);
+  console.log(`[Places API] Keyword: "${keyword}", Location: ${lat},${lng}, Budget: ${budget || 'Not specified'}, Radius: ${radius}m`);
   
   // Validate required parameters
   if (lat === 0 || lng === 0) {
@@ -60,10 +60,6 @@ export async function GET(request: NextRequest) {
   }
   
   try {
-    // Map budget string to price level range
-    const { min: minPriceLevel, max: maxPriceLevel } = mapBudgetToPriceLevel(budget);
-    console.log(`[Places API] Budget ${budget} mapped to price levels: ${minPriceLevel}-${maxPriceLevel}`);
-    
     // Get API key from server config
     const { googleMapsApiKey } = getServerConfig();
     
@@ -105,13 +101,19 @@ export async function GET(request: NextRequest) {
       priceLevels: []
     };
     
-    // Add price levels if specified
-    for (let i = minPriceLevel; i <= maxPriceLevel; i++) {
-      if (i >= 0 && i <= 4) {
-        // Map to the enum values used by Google Places API v1
-        const priceLevel = ['PRICE_LEVEL_FREE', 'PRICE_LEVEL_INEXPENSIVE', 'PRICE_LEVEL_MODERATE', 'PRICE_LEVEL_EXPENSIVE', 'PRICE_LEVEL_VERY_EXPENSIVE'][i];
-        requestBody.priceLevels.push(priceLevel as PriceLevel);
+    // Only add price levels if a budget was explicitly provided
+    if (budget) {
+      const { min: minPriceLevel, max: maxPriceLevel } = mapBudgetToPriceLevel(budget);
+      console.log(`[Places API] Budget ${budget} mapped to price levels: ${minPriceLevel}-${maxPriceLevel}`);
+      for (let i = minPriceLevel; i <= maxPriceLevel; i++) {
+        if (i >= 0 && i <= 4) {
+          // Map to the enum values used by Google Places API v1
+          const priceLevel = ['PRICE_LEVEL_FREE', 'PRICE_LEVEL_INEXPENSIVE', 'PRICE_LEVEL_MODERATE', 'PRICE_LEVEL_EXPENSIVE', 'PRICE_LEVEL_VERY_EXPENSIVE'][i];
+          requestBody.priceLevels.push(priceLevel as PriceLevel);
+        }
       }
+    } else {
+      console.log('[Places API] No budget specified, not filtering by price level.');
     }
     
     // New Places API v1 endpoint

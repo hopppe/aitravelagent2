@@ -139,17 +139,20 @@ export function mapBudgetToPriceLevel(budgetLevel: string): { min: number, max: 
     case 'budget':
     case 'low':
     case 'cheap':
-      return { min: 0, max: 1 };
+      return { min: 1, max: 1 }; // Only PRICE_LEVEL_INEXPENSIVE
     case 'moderate':
     case 'medium':
     case 'mid-range':
-      return { min: 1, max: 2 };
+      return { min: 2, max: 2 }; // Only PRICE_LEVEL_MODERATE
     case 'luxury':
     case 'high':
     case 'expensive':
-      return { min: 3, max: 4 };
+      return { min: 3, max: 3 }; // Only PRICE_LEVEL_EXPENSIVE
     default:
-      return { min: 0, max: 4 }; // Default to all price ranges
+      // For unrecognized budget levels, or if no budget is specified by certain callers,
+      // falling back to a broad range. Consider if this default is appropriate for all scenarios.
+      console.warn(`[mapBudgetToPriceLevel] Unrecognized budgetLevel: "${budgetLevel}", defaulting to all price levels.`);
+      return { min: 0, max: 4 }; 
   }
 }
 
@@ -173,4 +176,161 @@ export function getPriceLevelText(priceLevel?: number): string {
     default:
       return 'Price not available';
   }
+}
+
+// Google Places API v1 endpoints
+const PLACES_TEXT_SEARCH_URL = 'https://places.googleapis.com/v1/places:searchText';
+const PLACES_DETAILS_URL = 'https://places.googleapis.com/v1/places';
+const PLACES_PHOTO_URL = 'https://places.googleapis.com/v1/photos';
+
+// Don't check for env vars here - it will run on client
+// Get API key when needed in the functions
+
+// --- Types ---
+
+export interface PlacePhoto {
+  name: string;
+  widthPx: number;
+  heightPx: number;
+  authorAttributions: string[];
+}
+
+interface TextSearchResult {
+  places: { id: string }[];
+}
+
+interface PlaceDetailsResult {
+  photos?: PlacePhoto[];
+}
+
+// --- Utility Functions ---
+
+/**
+ * Fetches the Google Place ID for a given destination name using Text Search.
+ */
+export async function getPlaceId(destination: string): Promise<string | null> {
+  const apiKey = process.env.GOOGLE_MAPS_API_KEY;
+  if (!apiKey) {
+    console.error('[Google Places][getPlaceId] Missing GOOGLE_MAPS_API_KEY environment variable.');
+    return null;
+  }
+
+  const requestBody = {
+    textQuery: destination,
+  };
+
+  // console.log(`[Google Places][getPlaceId] Attempting to fetch placeId for destination: "${destination}" with body:`, JSON.stringify(requestBody, null, 2));
+
+  try {
+    const res = await fetch(PLACES_TEXT_SEARCH_URL, { // PLACES_TEXT_SEARCH_URL is 'https://places.googleapis.com/v1/places:searchText'
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Goog-Api-Key': apiKey,
+        'X-Goog-FieldMask': 'places.id', // Corrected field mask for searchText to get the place ID
+      } as HeadersInit,
+      body: JSON.stringify(requestBody),
+    });
+
+    if (!res.ok) {
+      const errorText = await res.text();
+      console.error(`[Google Places][getPlaceId] Error response from Text Search API for destination "${destination}". Status: ${res.status}, Response: ${errorText}`);
+      return null;
+    }
+
+    const data = (await res.json()) as TextSearchResult; 
+    // console.log(`[Google Places][getPlaceId] Raw Text Search API response for "${destination}":`, JSON.stringify(data, null, 2));
+
+    if (data.places && data.places.length > 0 && data.places[0].id) {
+      const placeId = data.places[0].id;
+      // console.log(`[Google Places][getPlaceId] Successfully found placeId "${placeId}" for "${destination}".`);
+      return placeId;
+    } else {
+      console.warn(`[Google Places][getPlaceId] No placeId found in Text Search API response for "${destination}".`);
+      return null;
+    }
+  } catch (error) {
+    console.error(`[Google Places][getPlaceId] Exception during Text Search API call for "${destination}":`, error);
+    return null;
+  }
+}
+
+/**
+ * Fetches photo metadata for a place by place ID.
+ */
+export async function getPlacePhotoMetadata(placeId: string): Promise<PlacePhoto | null> {
+  const apiKey = process.env.GOOGLE_MAPS_API_KEY;
+  if (!apiKey) {
+    console.error('[Google Places][getPlacePhotoMetadata] Missing GOOGLE_MAPS_API_KEY environment variable.');
+    return null;
+  }
+
+  try {
+    const url = `${PLACES_DETAILS_URL}/${placeId}`; // PLACES_DETAILS_URL is 'https://places.googleapis.com/v1/places'
+    // console.log(`[Google Places][getPlacePhotoMetadata] Fetching photo metadata from: ${url} with field mask: photos`);
+    const res = await fetch(url, {
+      headers: {
+        'X-Goog-Api-Key': apiKey,
+        'X-Goog-FieldMask': 'photos',
+      } as HeadersInit,
+    });
+
+    if (!res.ok) {
+      const errorText = await res.text();
+      console.error(`[Google Places][getPlacePhotoMetadata] Error fetching metadata for placeId '${placeId}'. Status: ${res.status}, Response: ${errorText}`);
+      return null;
+    }
+
+    const data = (await res.json()) as PlaceDetailsResult;
+    // console.log(`[Google Places][getPlacePhotoMetadata] Raw photo metadata response for placeId '${placeId}':`, JSON.stringify(data, null, 2));
+
+    if (!data.photos || data.photos.length === 0) {
+      // This is a common case (e.g. for cities/countries) and not necessarily an error, so using console.info or console.warn
+      console.info(`[Google Places][getPlacePhotoMetadata] No photos array or empty photos array found for placeId '${placeId}'.`);
+      return null;
+    }
+    
+    // console.log(`[Google Places][getPlacePhotoMetadata] Found photo metadata for placeId '${placeId}':`, JSON.stringify(data.photos[0], null, 2));
+    return data.photos[0];
+
+  } catch (error) {
+    console.error(`[Google Places][getPlacePhotoMetadata] Exception for placeId '${placeId}':`, error);
+    return null;
+  }
+}
+
+/**
+ * Constructs a Google Place Photo URL from photo metadata.
+ */
+export function getPlacePhotoUrl(photoName: string, maxWidth: number = 800): string | null {
+  const apiKey = process.env.GOOGLE_MAPS_API_KEY;
+  if (!apiKey) {
+    console.error('[Google Places][getPlacePhotoUrl] Missing GOOGLE_MAPS_API_KEY environment variable.');
+    return null;
+  }
+  
+  if (!photoName) {
+    console.error('[Google Places][getPlacePhotoUrl] Missing photoName argument.');
+    return null;
+  }
+  
+  try {
+    const photoUrl = `https://places.googleapis.com/v1/${photoName}/media?key=${apiKey}&maxWidthPx=${maxWidth}`;
+    // console.log(`[Google Places][getPlacePhotoUrl] Constructed photo URL: ${photoUrl}`);
+    return photoUrl;
+  } catch (error) {
+    console.error(`[Google Places][getPlacePhotoUrl] Error constructing photo URL for photoName "${photoName}":`, error);
+    return null;
+  }
+}
+
+/**
+ * Main function: Given a destination, returns a photo URL (or null if not found).
+ */
+export async function getPhotoUrlForDestination(destination: string): Promise<string | null> {
+  const placeId = await getPlaceId(destination);
+  if (!placeId) return null;
+  const photo = await getPlacePhotoMetadata(placeId);
+  if (!photo) return null;
+  return getPlacePhotoUrl(photo.name);
 } 

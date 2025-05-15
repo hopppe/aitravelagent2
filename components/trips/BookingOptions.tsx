@@ -87,10 +87,11 @@ export default function BookingOptions({
         // Process each accommodation to get enhanced details
         const enhancedAccommodationsMap = new Map<string, PlaceResult>();
         
-        for (const accommodation of uniqueAccommodations) {
+        // Create an array to store each accommodation fetch promise
+        const accommodationFetchPromises = uniqueAccommodations.map(async (accommodation) => {
           if (!accommodation || !accommodation.coordinates) {
             console.warn('Skipping accommodation with missing coordinates:', accommodation?.name);
-            continue;
+            return null;
           }
           
           const { lat, lng } = accommodation.coordinates;
@@ -98,7 +99,7 @@ export default function BookingOptions({
           // Ensure we have valid coordinates
           if (isNaN(lat) || isNaN(lng) || !isFinite(lat) || !isFinite(lng)) {
             console.error('Invalid coordinates for accommodation:', accommodation.name, lat, lng);
-            continue;
+            return null;
           }
           
           // For debugging
@@ -106,34 +107,76 @@ export default function BookingOptions({
           console.log('- Location:', lat, lng);
           console.log('- Budget level:', budget);
           
-          // Try to find the accommodation in the Places API to get additional details
-          const specificApiUrl = `/api/places?lat=${lat}&lng=${lng}&type=lodging&budget=${encodeURIComponent(budget)}&radius=1000&keyword=${encodeURIComponent(accommodation.name)}`;
-          
-          const specificResponse = await fetch(specificApiUrl, {
-            cache: 'no-store' 
-          });
-          
-          if (specificResponse.ok) {
-            const specificData = await specificResponse.json();
-            if (specificData.places && specificData.places.length > 0) {
-              const matchingPlace = specificData.places.find((place: PlaceResult) => 
-                place.name.toLowerCase().includes(accommodation.name.toLowerCase()) ||
-                accommodation.name.toLowerCase().includes(place.name.toLowerCase())
-              );
-              
-              if (matchingPlace) {
-                console.log(`Found enhanced details for accommodation: ${accommodation.name}`);
-                enhancedAccommodationsMap.set(accommodation.name, matchingPlace);
+          try {
+            // Try to find the accommodation using text search with precise name and location
+            const keywordQuery = encodeURIComponent(accommodation.name);
+            const specificApiUrl = `/api/places?lat=${lat}&lng=${lng}&type=lodging&radius=1000&keyword=${keywordQuery}`;
+            
+            const specificResponse = await fetch(specificApiUrl, {
+              cache: 'no-store' 
+            });
+            
+            if (specificResponse.ok) {
+              const specificData = await specificResponse.json();
+              if (specificData.places && specificData.places.length > 0) {
+                // First try exact match, then fuzzy match
+                let matchingPlace = specificData.places.find((place: PlaceResult) => 
+                  place.name.toLowerCase() === accommodation.name.toLowerCase()
+                );
                 
-                // Set the first one as the enhanced recommendation for backward compatibility
-                if (accommodation.name === recommendedAccommodation.name) {
-                  setEnhancedRecommendation(matchingPlace);
+                // If no exact match, try fuzzy match
+                if (!matchingPlace) {
+                  matchingPlace = specificData.places.find((place: PlaceResult) => 
+                    place.name.toLowerCase().includes(accommodation.name.toLowerCase()) ||
+                    accommodation.name.toLowerCase().includes(place.name.toLowerCase())
+                  );
+                }
+                
+                // If we found a match, save it
+                if (matchingPlace) {
+                  console.log(`Found enhanced details for accommodation: ${accommodation.name}`);
+                  enhancedAccommodationsMap.set(accommodation.name, matchingPlace);
+                  return { accommodation, matchingPlace };
                 }
               }
             }
+            
+            // Fall back to searching by name only if the precise search failed
+            const fallbackApiUrl = `/api/places?lat=${lat}&lng=${lng}&type=lodging&radius=5000&keyword=${encodeURIComponent(accommodation.name)}`;
+            
+            const fallbackResponse = await fetch(fallbackApiUrl, {
+              cache: 'no-store' 
+            });
+            
+            if (fallbackResponse.ok) {
+              const fallbackData = await fallbackResponse.json();
+              if (fallbackData.places && fallbackData.places.length > 0) {
+                const fallbackMatch = fallbackData.places[0]; // Just use the first result as a fallback
+                console.log(`Using fallback match for ${accommodation.name}: ${fallbackMatch.name}`);
+                enhancedAccommodationsMap.set(accommodation.name, fallbackMatch);
+                return { accommodation, matchingPlace: fallbackMatch };
+              }
+            }
+            
+            console.log(`No enhanced details found for accommodation: ${accommodation.name}`);
+            return { accommodation, matchingPlace: null };
+          } catch (error) {
+            console.error(`Error fetching details for ${accommodation.name}:`, error);
+            return null;
           }
+        });
+        
+        // Wait for all accommodation fetch operations to complete
+        const results = await Promise.all(accommodationFetchPromises);
+        
+        // Set the enhanced recommendation (the first valid one)
+        const firstValidResult = results.find(result => result && result.matchingPlace);
+        if (firstValidResult && firstValidResult.matchingPlace) {
+          console.log(`Setting ${firstValidResult.accommodation.name} as enhanced recommendation`);
+          setEnhancedRecommendation(firstValidResult.matchingPlace);
         }
         
+        // Update the map with all enhanced accommodations
         setEnhancedAccommodations(enhancedAccommodationsMap);
         
         // Now fetch alternative accommodations in the area
@@ -236,24 +279,35 @@ export default function BookingOptions({
   // Create accommodation card for the horizontal scroll list
   const renderAccommodationCard = (accommodation: Accommodation) => {
     const enhancedData = enhancedAccommodations.get(accommodation.name);
-    const mapUrl = enhancedData?.url || 
-      `https://www.google.com/maps/search/?api=1&query=${accommodation.coordinates.lat},${accommodation.coordinates.lng}&query_place_id=${encodeURIComponent(accommodation.name)}`;
+    let mapUrl: string;
+
+    if (enhancedData && enhancedData.url) {
+      // 1. Use the URL from the Places API result if available (should be the most accurate)
+      mapUrl = enhancedData.url;
+    } else if (enhancedData && enhancedData.id) {
+      // 2. If API URL is missing but we have a Place ID, use it
+      mapUrl = `https://www.google.com/maps/search/?api=1&query_place_id=${enhancedData.id}`;
+    } else {
+      // 3. Fallback: If no enhanced data or no Place ID, search by name and original coordinates.
+      const query = encodeURIComponent(`${accommodation.name}, ${accommodation.coordinates.lat},${accommodation.coordinates.lng}`);
+      mapUrl = `https://www.google.com/maps/search/?api=1&query=${query}`;
+    }
 
     return (
-      <div key={accommodation.name} className="flex-shrink-0 w-72 border rounded-lg p-4 mr-4 bg-blue-50">
+      <div key={accommodation.name} className="flex-shrink-0 w-64 border rounded-lg p-3 hover:shadow-md transition-shadow">
         <a
           href={mapUrl}
           target="_blank"
           rel="noopener noreferrer"
-          className="block hover:underline"
+          className="block"
         >
-          <div className="relative bg-gray-100 rounded-lg w-full h-40 mb-3">
+          <div className="relative bg-gray-100 rounded-lg w-full h-32 mb-2">
             {enhancedData?.photos && enhancedData.photos[0] ? (
               <Image
                 src={enhancedData.photos[0]}
                 alt={accommodation.name}
                 fill
-                sizes="(max-width: 640px) 100vw, 288px"
+                sizes="(max-width: 640px) 100vw, 256px"
                 className="object-cover rounded-lg"
                 loading="lazy"
                 onError={(e) => {
@@ -262,46 +316,49 @@ export default function BookingOptions({
                   target.style.display = 'none';
                   const parent = target.parentElement;
                   if (parent) {
-                    parent.innerHTML = '<div class="w-full h-full flex items-center justify-center"><div class="text-4xl text-gray-400"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-12 h-12"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg></div></div>';
+                    parent.innerHTML = '<div class="w-full h-full flex items-center justify-center"><div class="text-xl text-gray-400"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-10 h-10"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg></div></div>';
                   }
                 }}
               />
             ) : (
               <div className="w-full h-full flex items-center justify-center">
-                <FaBed className="text-4xl text-gray-400" />
+                <FaBed className="text-xl text-gray-400" />
               </div>
             )}
           </div>
           
-          <h4 className="font-semibold text-sm uppercase mb-1 text-primary">
-            {accommodation.checkInOut === 'check-in' ? 'Check-in' : 
-             accommodation.checkInOut === 'check-out' ? 'Check-out' : 
-             accommodation.checkInOut === 'staying' ? 'Staying' : 'Accommodation'}
-          </h4>
-          
-          <h5 className="font-medium">{accommodation.name}</h5>
-          <p className="text-sm text-gray-600 mb-1 line-clamp-2">{accommodation.description}</p>
-          
-          {enhancedData?.rating && enhancedData.rating > 0 && (
-            <div className="flex items-center gap-1 text-yellow-500 text-sm mb-1">
-              <FaStar /> <span>{enhancedData.rating.toFixed(1)}</span>
-              <span className="text-gray-500">
-                ({enhancedData.userRatingsTotal.toLocaleString()} reviews)
-              </span>
-            </div>
-          )}
-          
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-2 mt-1">
-            <span className="text-primary font-medium">
-              {typeof accommodation.cost === 'number'
-                ? `$${accommodation.cost.toFixed(2)}`
-                : accommodation.cost}
-            </span>
-            {enhancedData?.priceLevel !== undefined && (
-              <div className="flex items-center text-sm">
-                {renderPriceLevel(enhancedData.priceLevel)}
+          <div>
+            <h4 className="font-semibold text-xs uppercase mb-1 text-primary">
+              {accommodation.checkInOut === 'check-in' ? 'Check-in' : 
+               accommodation.checkInOut === 'check-out' ? 'Check-out' : 
+               accommodation.checkInOut === 'staying' ? 'Staying' : 'Accommodation'}
+            </h4>
+            
+            <h5 className="font-medium text-sm">{accommodation.name}</h5>
+            <p className="text-xs text-gray-600 mb-1 line-clamp-1">{accommodation.description}</p>
+            
+            {enhancedData?.rating && enhancedData.rating > 0 && (
+              <div className="flex items-center gap-1 text-yellow-500 text-xs">
+                <FaStar /> <span>{enhancedData.rating.toFixed(1)}</span>
+                <span className="text-gray-500">
+                  ({enhancedData.userRatingsTotal.toLocaleString()})
+                </span>
               </div>
             )}
+            
+            <div className="flex flex-wrap items-center gap-1 mt-1">
+              <span className="text-primary font-medium text-xs">
+                {typeof accommodation.cost === 'number'
+                  ? `$${accommodation.cost.toFixed(2)}`
+                  : accommodation.cost}
+              </span>
+              {enhancedData?.priceLevel !== undefined && (
+                <div className="text-xs flex items-center gap-1">
+                  {renderPriceLevel(enhancedData.priceLevel)}
+                  <span className="text-gray-600">({getPriceLevelText(enhancedData.priceLevel)})</span>
+                </div>
+              )}
+            </div>
           </div>
         </a>
       </div>

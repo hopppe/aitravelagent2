@@ -203,7 +203,8 @@ function generatePrompt(formData: any): string {
 Create a personalized travel itinerary for ${formData.destination} from ${formattedStartDate} to ${formattedEndDate} (${tripDuration} days).
 
 Tailor this itinerary for the traveler. Their purpose of the trip is ${formData.purpose}. Their budget is ${formData.budget} (${budgetGuidelines}). ${formData.preferences && formData.preferences.length > 0 ? `They like ${formData.preferences.join(', ')}` : ''} 
-Special requests: ${specialRequests}
+
+${specialRequests}
 
 For longer trips, vary the daily structure - not every day needs to be packed with activities. Some days can have fewer activities than others, and breakfast is only needed when there are notable breakfast places nearby. When activities are in the same area, group them together on the same day to minimize travel time.
 

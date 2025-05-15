@@ -152,6 +152,9 @@ export default function SampleTrips() {
       
       const tripData = await response.json();
       
+      // Mark this as an example trip
+      tripData.isExample = true;
+      
       // Store the selected trip in localStorage for the trip page to access
       localStorage.setItem('generatedItinerary', JSON.stringify(tripData));
     } catch (error) {

@@ -311,6 +311,13 @@ export default function GeneratedTripPage() {
 
   // Function to save trip to Supabase
   const saveTrip = async (tripData: any) => {
+    // Prevent double-save: check if a save is already in progress
+    if (localStorage.getItem('isSavingTrip') === 'true') {
+      console.log('Trip save already in progress, skipping saveTrip call.');
+      return;
+    }
+    // Set a flag to prevent double-save
+    localStorage.setItem('isSavingTrip', 'true');
     if (!tripData) {
       console.error('Cannot save empty trip data');
       return;
@@ -419,6 +426,8 @@ export default function GeneratedTripPage() {
       setSaveError(error instanceof Error ? error.message : 'Unknown error occurred');
     } finally {
       setIsSaving(false);
+      // Always clear the double-save flag after save attempt
+      localStorage.removeItem('isSavingTrip');
     }
   };
 
@@ -581,6 +590,11 @@ export default function GeneratedTripPage() {
           
           // Only save to Supabase if it hasn't been saved already AND there is no tripId in URL
           // AND there's no lastSavedTripId in localStorage
+          // Do not autosave if this is an example trip
+          if (validatedItinerary.isExample) {
+            console.log('This is an example trip, skipping autosave.');
+            return;
+          }
           const shouldSave = !validatedItinerary.saved_trip_id && 
                             !tripId && 
                             !previousSavedId;

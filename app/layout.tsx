@@ -3,6 +3,7 @@ import './globals.css';
 import { Navbar } from '../components/layout/Navbar';
 import dynamic from 'next/dynamic';
 import { AuthProvider } from '../hooks/useAuth';
+import Script from 'next/script';
 
 // Import ErrorBoundary dynamically to avoid SSR issues
 const ErrorBoundary = dynamic(
@@ -26,6 +27,23 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
+      <Script
+        id="emerald-affiliation"
+        strategy="afterInteractive"
+        dangerouslySetInnerHTML={{
+          __html: `
+            (function () {
+              var script = document.createElement("script");
+              script.async = 1;
+              script.src = 'https://emrldtp.cc/NDE2ODE4.js?t=416818';
+              document.head.appendChild(script);
+            })();
+          `
+        }}
+        data-noptimize="1"
+        data-cfasync="false"
+        data-wpfc-render="false"
+      />
       <body className="min-h-screen bg-light">
         <AuthProvider>
           <Navbar />
