@@ -1,11 +1,11 @@
 'use client';
 
 import Link from 'next/link';
-import { FaPlane, FaUser, FaSignOutAlt } from 'react-icons/fa';
+import { FaPlane, FaUser } from 'react-icons/fa';
 import { useAuth } from '../../hooks/useAuth';
 
 export function Navbar() {
-  const { user, signOut, loading } = useAuth();
+  const { user, loading } = useAuth();
   
   // Get user's display name if available
   const displayName = user?.user_metadata?.name || '';
@@ -27,13 +27,6 @@ export function Navbar() {
             <FaUser />
             <span>{displayName ? displayName : 'Profile'}</span>
           </Link>
-          <button 
-            onClick={() => signOut()}
-            className="flex items-center gap-1 hover:text-accent transition-colors"
-          >
-            <FaSignOutAlt />
-            <span>Sign Out</span>
-          </button>
         </div>
       );
     }
@@ -58,8 +51,14 @@ export function Navbar() {
         </Link>
         
         <div className="flex items-center gap-4">
+          <Link href="/" className="hover:text-accent transition-colors">
+            Home
+          </Link>
           <Link href="/trips" className="hover:text-accent transition-colors">
             My Trips
+          </Link>
+          <Link href="/about" className="hover:text-accent transition-colors">
+            About
           </Link>
           
           {renderAuthSection()}

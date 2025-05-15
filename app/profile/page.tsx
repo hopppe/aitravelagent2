@@ -4,11 +4,11 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '../../hooks/useAuth';
 import Link from 'next/link';
-import { FaUser, FaEnvelope, FaPlane } from 'react-icons/fa';
+import { FaUser, FaEnvelope, FaPlane, FaSignOutAlt } from 'react-icons/fa';
 import TripList from '../../components/trips/TripList';
 
 export default function ProfilePage() {
-  const { user, loading, refreshUser } = useAuth();
+  const { user, loading, refreshUser, signOut } = useAuth();
   const router = useRouter();
   const [name, setName] = useState('');
   const [isSaving, setIsSaving] = useState(false);
@@ -105,7 +105,16 @@ export default function ProfilePage() {
 
   return (
     <div className="max-w-4xl mx-auto">
-      <h1 className="text-3xl font-bold mb-6">Your Profile</h1>
+      <div className="flex justify-between items-center mb-6">
+        <h1 className="text-3xl font-bold">Your Profile</h1>
+        <button
+          onClick={() => signOut()}
+          className="flex items-center gap-2 bg-gray-200 hover:bg-gray-300 text-gray-800 py-2 px-4 rounded-lg transition-colors"
+        >
+          <FaSignOutAlt />
+          <span>Sign Out</span>
+        </button>
+      </div>
       
       {error && (
         <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">

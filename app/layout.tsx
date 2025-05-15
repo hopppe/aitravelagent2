@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import './globals.css';
 import { Navbar } from '../components/layout/Navbar';
+import { Footer } from '../components/layout/Footer';
 import dynamic from 'next/dynamic';
 import { AuthProvider } from '../hooks/useAuth';
 import Script from 'next/script';
@@ -44,14 +45,15 @@ export default function RootLayout({
         data-cfasync="false"
         data-wpfc-render="false"
       />
-      <body className="min-h-screen bg-light">
+      <body className="min-h-screen bg-light flex flex-col">
         <AuthProvider>
           <Navbar />
-          <main className="container mx-auto px-4 py-8">
+          <main className="container mx-auto px-4 py-8 flex-grow">
             <ErrorBoundary>
               {children}
             </ErrorBoundary>
           </main>
+          <Footer />
         </AuthProvider>
       </body>
     </html>

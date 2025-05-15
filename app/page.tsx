@@ -1,6 +1,7 @@
 import React from 'react';
 import Link from 'next/link';
-import { FaPlane, FaMapMarkedAlt, FaWallet, FaCalendarAlt, FaMobileAlt, FaSuitcase, FaCompass } from 'react-icons/fa';
+import Image from 'next/image';
+import { FaPlane, FaMapMarkedAlt, FaWallet, FaCalendarAlt, FaMobileAlt, FaSuitcase, FaCompass, FaRobot, FaGlobeAmericas, FaLaptop } from 'react-icons/fa';
 import TripList from '../components/trips/TripList';
 import SampleTrips from '../components/trips/SampleTrips';
 import AuthAwareLink from '../components/auth/AuthAwareLink';
@@ -10,18 +11,34 @@ export default function Home() {
   
   return (
     <div className="container mx-auto px-4 py-8">
-      <section className="text-center mb-16">
-        <h1 className="text-4xl md:text-5xl font-bold mb-4 text-primary">
-          Your AI Travel Companion
-        </h1>
-        <p className="text-xl text-gray-600 max-w-2xl mx-auto">
-          Create personalized travel itineraries powered by artificial intelligence. 
-          Plan your perfect trip with smart recommendations and detailed daily schedules.
-        </p>
-        <div className="mt-8">
-          <Link href="/trips/new" className="bg-primary text-white py-3 px-8 rounded-lg text-lg font-semibold hover:bg-opacity-90 transition-all">
-            Plan My Trip
-          </Link>
+      <section className="mb-16">
+        <div className="flex flex-col md:flex-row items-center justify-between gap-6 md:gap-12">
+          <div className="md:w-1/2 text-left md:pr-6">
+            <h1 className="text-4xl md:text-5xl font-bold mb-6 text-primary">
+              Your AI Travel Companion
+            </h1>
+            <p className="text-xl text-gray-600 mb-6">
+              Create personalized travel itineraries powered by artificial intelligence.
+            </p>
+            <p className="text-lg text-gray-600 mb-8">
+              Tell us your destination and preferences, and our AI will generate a customized itinerary.
+            </p>
+            <div>
+              <Link href="/trips/new" className="bg-primary text-white py-3 px-8 rounded-lg text-lg font-semibold hover:bg-opacity-90 transition-all min-h-[44px] inline-flex items-center justify-center">
+                Plan My Trip
+              </Link>
+            </div>
+          </div>
+          <div className="md:w-1/2 relative h-72 sm:h-80 md:h-96 w-full rounded-lg overflow-hidden mt-8 md:mt-0">
+            <Image 
+              src="/Croatia.jpeg"
+              alt="Travel planning with AI"
+              fill
+              className="object-cover"
+              sizes="(max-width: 768px) 100vw, 50vw"
+              priority
+            />
+          </div>
         </div>
       </section>
 
@@ -46,30 +63,43 @@ export default function Home() {
         </section>
       )}
 
-      <section className="grid md:grid-cols-2 lg:grid-cols-4 gap-8 mb-16">
-        <FeatureCard 
-          icon={<FaPlane />}
-          title="Personalized Itineraries"
-          description="AI-generated travel plans tailored to your preferences, budget, and travel style."
-        />
-        <FeatureCard 
-          icon={<FaMapMarkedAlt />}
-          title="Interactive Maps"
-          description="Visualize your daily activities with our interactive maps feature."
-        />
-        <FeatureCard 
-          icon={<FaWallet />}
-          title="Budget Forecasting"
-          description="Get accurate cost estimates for accommodation, food, activities, and transportation."
-        />
-        <FeatureCard 
-          icon={<FaCalendarAlt />}
-          title="Day-by-Day Planning"
-          description="Detailed daily schedules with activities, restaurants, and travel times."
-        />
+      <section className="mb-16">
+        <h2 className="text-2xl font-bold mb-6 text-center">Why Choose Our AI Travel Planner</h2>
+        <div className="grid md:grid-cols-3 gap-6">
+          <FeatureCard 
+            icon={<FaRobot />}
+            title="AI-Powered Planning"
+            description="Our advanced AI creates customized itineraries based on your preferences, saving you hours of research time."
+          />
+          <FeatureCard 
+            icon={<FaMapMarkedAlt />}
+            title="Discover Hidden Gems"
+            description="Explore beyond tourist hotspots with recommendations for local favorites and off-the-beaten-path attractions."
+          />
+          <FeatureCard 
+            icon={<FaWallet />}
+            title="Budget Optimization"
+            description="Maximize your travel budget with options that align with your financial preferences."
+          />
+          <FeatureCard 
+            icon={<FaPlane />}
+            title="Personalized Itineraries"
+            description="Get tailored recommendations for accommodations, restaurants, activities, and transportation."
+          />
+          <FeatureCard 
+            icon={<FaCalendarAlt />}
+            title="Day-by-Day Planning"
+            description="Receive detailed daily schedules that balance sightseeing, relaxation, and authentic experiences."
+          />
+          <FeatureCard 
+            icon={<FaGlobeAmericas />}
+            title="Global Coverage"
+            description="Plan trips to destinations worldwide with localized insights and recommendations."
+          />
+        </div>
       </section>
 
-      <section className="bg-gray-50 p-8 rounded-xl">
+      <section className="bg-gray-50 p-8 rounded-xl mb-16">
         <h2 className="text-2xl font-bold mb-6 text-center">How It Works</h2>
         <div className="grid md:grid-cols-3 gap-8">
           <StepCard 
