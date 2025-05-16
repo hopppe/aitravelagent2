@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-// Import XIcon directly from a node_modules path that works
-import { XIcon } from '@heroicons/react/solid';
+// Update import to use the correct package format for heroicons v2
+import { XMarkIcon } from '@heroicons/react/24/solid';
 
 // Define BaseItem type based on the existing type in the project
 type BaseItem = {
@@ -60,7 +60,7 @@ const EditItemModal: React.FC<EditItemModalProps> = ({
             className="text-gray-500 hover:text-gray-700"
             aria-label="Close"
           >
-            <XIcon className="h-5 w-5" />
+            <XMarkIcon className="h-5 w-5" />
           </button>
         </div>
 
