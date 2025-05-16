@@ -1,10 +1,12 @@
 'use client';
 
-import React, { useState, useEffect, lazy, Suspense } from 'react';
-import { FaEdit, FaShare } from 'react-icons/fa';
+import React, { useState, useEffect, lazy, Suspense, useRef, useCallback } from 'react';
+import { FaEdit, FaSave } from 'react-icons/fa';
 import { useRouter, useSearchParams } from 'next/navigation';
 import useBudgetCalculator from '../../../hooks/useBudgetCalculator';
 import { supabaseAuth } from '../../../lib/auth';
+import ShareMenu from '../../../components/trips/ShareMenu';
+import PdfRenderer from '../../../components/trips/PdfRenderer';
 
 // Lazy load heavy components
 const ItineraryTabs = lazy(() => import('../../../components/trips/ItineraryTabs'));
@@ -219,6 +221,7 @@ export default function GeneratedTripPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const tripId = searchParams.get('id');
+  const contentRef = useRef<HTMLDivElement>(null);
   
   const [itinerary, setItinerary] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -226,9 +229,20 @@ export default function GeneratedTripPage() {
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [lastSavedItinerary, setLastSavedItinerary] = useState<string>('');
+  
+  // Save timer ref to track debounced saves
+  const saveTimerRef = useRef<NodeJS.Timeout | null>(null);
   
   // Use our budget calculator hook to get normalized budget values
   const normalizedBudget = useBudgetCalculator(itinerary);
+
+  // Function to update itinerary that can be passed to child components
+  const updateItinerary = useCallback((updatedItinerary: any) => {
+    console.log('Updating itinerary from child component');
+    setItinerary(updatedItinerary);
+    localStorage.setItem('generatedItinerary', JSON.stringify(updatedItinerary));
+  }, []);
 
   // Function to load trip from the database by ID
   const loadTripFromDatabase = async (id: string) => {
@@ -310,39 +324,68 @@ export default function GeneratedTripPage() {
   }, [itinerary]);
 
   // Function to save trip to Supabase
-  const saveTrip = async (tripData: any) => {
-    // Prevent double-save: check if a save is already in progress
-    if (localStorage.getItem('isSavingTrip') === 'true') {
-      console.log('Trip save already in progress, skipping saveTrip call.');
-      return;
+  const saveTrip = async (tripData: any, forceNewSave = false) => {
+    // Check if a save is already in progress, but add timeout to prevent stale locks
+    const savingData = localStorage.getItem('isSavingTrip');
+    
+    if (savingData) {
+      try {
+        const { timestamp } = JSON.parse(savingData);
+        const now = Date.now();
+        // If the timestamp is less than 2 minutes old, consider the save in progress
+        if (now - timestamp < 120000) { // 2 minutes in milliseconds
+          console.log('Trip save already in progress, skipping saveTrip call.');
+          return;
+        } else {
+          console.log('Found stale save lock, continuing with save');
+        }
+      } catch (e) {
+        // If we can't parse the data, it's corrupted, so continue with the save
+        console.log('Found corrupted save lock, continuing with save');
+      }
     }
-    // Set a flag to prevent double-save
-    localStorage.setItem('isSavingTrip', 'true');
+    
+    // Set a flag with timestamp to prevent double-save and handle stale locks
+    localStorage.setItem('isSavingTrip', JSON.stringify({ timestamp: Date.now() }));
+    
     if (!tripData) {
       console.error('Cannot save empty trip data');
+      localStorage.removeItem('isSavingTrip'); // Clear the flag
       return;
     }
 
-    // Check for a previously saved version of this trip in localStorage
-    const previousSaveKey = 'lastSavedTripId';
-    const previousSavedId = localStorage.getItem(previousSaveKey);
-    
-    if (previousSavedId) {
-      console.log('Found previously saved trip ID in localStorage:', previousSavedId);
-      // Update the tripData with the saved ID to turn this into an update operation
-      tripData.saved_trip_id = previousSavedId;
+    // Create a copy of the trip data to avoid modifying the original
+    const tripToSave = { ...tripData };
+
+    // If forceNewSave is true, always create a new trip by removing any existing ID
+    if (forceNewSave) {
+      console.log('Force new save requested, removing existing trip ID if present');
+      delete tripToSave.saved_trip_id;
+      // Also clear the locally stored ID to prevent future autosaves from using it
+      localStorage.removeItem('lastSavedTripId');
+    } else {
+      // Check for a previously saved version of this trip in localStorage
+      const previousSaveKey = 'lastSavedTripId';
+      const previousSavedId = localStorage.getItem(previousSaveKey);
+      
+      if (previousSavedId && !tripToSave.saved_trip_id) {
+        console.log('Found previously saved trip ID in localStorage:', previousSavedId);
+        // Update the tripData with the saved ID to turn this into an update operation
+        tripToSave.saved_trip_id = previousSavedId;
+      }
     }
 
     // Check if the trip is already saved to avoid duplicates
-    const isUpdate = !!tripData.saved_trip_id;
-    if (isUpdate) {
-      console.log('Trip already saved with ID:', tripData.saved_trip_id);
+    const isUpdate = !!tripToSave.saved_trip_id;
+    if (isUpdate && !forceNewSave) {
+      console.log('Trip already saved with ID:', tripToSave.saved_trip_id);
       console.log('This will be an update operation rather than a new save');
       
       // If we're loading a trip by ID from URL, and it's the same as the saved_trip_id,
       // we don't need to update anything as we've just loaded it
-      if (tripId && tripId === tripData.saved_trip_id) {
+      if (tripId && tripId === tripToSave.saved_trip_id) {
         console.log('Trip was just loaded from database with the same ID, skipping save');
+        localStorage.removeItem('isSavingTrip'); // Clear the flag
         return;
       }
     } else {
@@ -375,7 +418,7 @@ export default function GeneratedTripPage() {
       const response = await fetch('/api/save-trip', {
         method: 'POST',
         headers,
-        body: JSON.stringify(tripData),
+        body: JSON.stringify(tripToSave),
       });
       
       const responseText = await response.text();
@@ -399,7 +442,7 @@ export default function GeneratedTripPage() {
         throw new Error('Invalid response format from server');
       }
       
-      console.log('Trip automatically saved successfully', result);
+      console.log('Trip successfully saved with ID:', result.tripId);
       
       // Store the trip ID in the itinerary object and update localStorage
       const updatedItinerary = {
@@ -412,7 +455,7 @@ export default function GeneratedTripPage() {
       localStorage.setItem('generatedItinerary', JSON.stringify(updatedItinerary));
       
       // Store the trip ID separately to prevent future duplicate saves
-      localStorage.setItem(previousSaveKey, result.tripId);
+      localStorage.setItem('lastSavedTripId', result.tripId);
       
       setSaveSuccess(true);
       
@@ -422,14 +465,67 @@ export default function GeneratedTripPage() {
       }, 3000);
       
     } catch (error) {
-      console.error('Error auto-saving trip:', error);
+      console.error('Error saving trip:', error);
       setSaveError(error instanceof Error ? error.message : 'Unknown error occurred');
     } finally {
       setIsSaving(false);
-      // Always clear the double-save flag after save attempt
+      // Always clear the double-save flag after save attempt, regardless of success or failure
       localStorage.removeItem('isSavingTrip');
     }
   };
+
+  // Create a debounced version of saveTrip
+  const debouncedSaveTrip = useCallback((tripData: any) => {
+    // Clear any existing timer
+    if (saveTimerRef.current) {
+      clearTimeout(saveTimerRef.current);
+    }
+    
+    // Set a new timer for 2 seconds
+    saveTimerRef.current = setTimeout(() => {
+      console.log('Auto-saving trip after changes...');
+      saveTrip(tripData, false);
+    }, 2000); // 2-second debounce
+  }, []);
+  
+  // Monitor itinerary changes and trigger autosave
+  useEffect(() => {
+    // Skip if no itinerary or during initial loading
+    if (!itinerary || isLoading) return;
+    
+    // Skip autosave for example trips or newly loaded trips
+    if (itinerary.isExample || !itinerary.days) return;
+    
+    // Skip if we don't have the trip ID from URL and the trip doesn't have a saved_trip_id
+    if (!tripId && !itinerary.saved_trip_id) return;
+    
+    // Convert itinerary to string to compare with previous state
+    const currentItineraryString = JSON.stringify(itinerary);
+    
+    // Only save if the itinerary has actually changed
+    if (currentItineraryString !== lastSavedItinerary) {
+      console.log('Itinerary changed, triggering auto-save...');
+      debouncedSaveTrip(itinerary);
+      setLastSavedItinerary(currentItineraryString);
+    }
+  }, [itinerary, isLoading, tripId, debouncedSaveTrip, lastSavedItinerary]);
+
+  // Listen for the custom event from ItineraryTabs component
+  useEffect(() => {
+    const handleItineraryUpdated = (event: CustomEvent) => {
+      console.log('Received itinerary-updated event');
+      // Set the itinerary state with the new data
+      setItinerary(event.detail);
+    };
+
+    // Add event listener for custom event
+    window.addEventListener('itinerary-updated', handleItineraryUpdated as EventListener);
+    
+    // Clean up the event listener
+    return () => {
+      window.removeEventListener('itinerary-updated', handleItineraryUpdated as EventListener);
+    };
+  }, []);
 
   useEffect(() => {
     const loadTrip = async () => {
@@ -595,16 +691,17 @@ export default function GeneratedTripPage() {
             console.log('This is an example trip, skipping autosave.');
             return;
           }
-          const shouldSave = !validatedItinerary.saved_trip_id && 
-                            !tripId && 
-                            !previousSavedId;
           
-          if (shouldSave) {
-            console.log('No saved_trip_id found and no previous saves detected, saving to Supabase');
-            saveTrip(validatedItinerary);
+          // Never overwrite trips automatically - only save brand new trips
+          const alreadySaved = !!validatedItinerary.saved_trip_id || !!localStorage.getItem('lastSavedTripId');
+          const shouldAutoSave = !alreadySaved && !tripId;
+          
+          if (shouldAutoSave) {
+            console.log('No previous saves detected, auto-saving new trip to Supabase');
+            saveTrip(validatedItinerary, false); // Auto-save as a new trip
           } else {
-            console.log('Trip already has saved_trip_id or previous save detected, skipping new save:', 
-              validatedItinerary.saved_trip_id || previousSavedId || tripId);
+            console.log('Trip already has an ID or previous save detected, skipping auto-save:', 
+              validatedItinerary.saved_trip_id || localStorage.getItem('lastSavedTripId') || tripId);
           }
           
         } catch (parseError) {
@@ -630,14 +727,27 @@ export default function GeneratedTripPage() {
     loadTrip();
   }, [router, tripId]);
 
+  // Handler for save button
+  const handleSaveTrip = () => {
+    if (itinerary.saved_trip_id) {
+      // If the trip already has an ID, ask for confirmation before creating a duplicate
+      if (window.confirm('This trip is already saved. Do you want to save a new copy instead of updating the existing trip?')) {
+        saveTrip(itinerary, true);
+      }
+    } else {
+      // For new trips, just save directly
+      saveTrip(itinerary, true);
+    }
+  };
+
   // Handler for edit button
   const handleEditTrip = () => {
     router.push('/trips/new'); // Redirect back to the survey form
   };
 
-  // Handler for share button (simplified demo)
+  // Handler for share button (updated to use ShareMenu component)
   const handleShareTrip = () => {
-    alert('Sharing functionality would be implemented here in a real application.');
+    // This is now handled by the ShareMenu component
   };
 
   // Show loading state
@@ -695,7 +805,10 @@ export default function GeneratedTripPage() {
       <div className="flex justify-between items-center">
         <div>
           {saveSuccess && (
-            <div className="bg-green-100 text-green-700 px-4 py-2 rounded-md">
+            <div className="bg-green-100 text-green-700 px-4 py-2 rounded-md flex items-center">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
+                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+              </svg>
               Trip auto-saved successfully!
             </div>
           )}
@@ -706,59 +819,79 @@ export default function GeneratedTripPage() {
           )}
         </div>
         <div className="flex gap-2">
+          {/* Hide the Save button since we have autosave now */}
+          {!tripId && !itinerary?.saved_trip_id && (
+            <button 
+              onClick={handleSaveTrip}
+              className="bg-blue-500 text-white py-2 px-4 rounded-md hover:bg-opacity-90 flex items-center gap-1"
+              disabled={isSaving}
+            >
+              {isSaving ? (
+                <>
+                  <div className="animate-spin h-4 w-4 border-2 border-white rounded-full border-t-transparent"></div>
+                  <span>Saving...</span>
+                </>
+              ) : (
+                <>
+                  <FaSave /> <span>Save Trip</span>
+                </>
+              )}
+            </button>
+          )}
           <button 
             onClick={handleEditTrip}
             className="bg-primary text-white py-2 px-4 rounded-md hover:bg-opacity-90 flex items-center gap-1"
           >
             <FaEdit /> <span>Edit Trip</span>
           </button>
-          <button 
-            onClick={handleShareTrip}
-            className="bg-accent text-white py-2 px-4 rounded-md hover:bg-opacity-90 flex items-center gap-1"
-          >
-            <FaShare /> <span>Share</span>
-          </button>
+          {/* ShareMenu component for sharing functionality */}
+          <ShareMenu tripId={tripId || itinerary.saved_trip_id || 'demo'} />
         </div>
       </div>
 
-      {/* Tabs - Calendar, Map, Budget Views with Suspense */}
-      <Suspense fallback={<ComponentLoader />}>
-        <ItineraryTabs 
-          days={itinerary.days} 
-          budget={normalizedBudget}
-          title={itinerary.title || itinerary.tripName} 
-          summary={itinerary.overview || itinerary.description || itinerary.tripDescription || itinerary.summary}
-          travelTips={itinerary.travelTips}
-        />
-      </Suspense>
-      
-      {/* Booking Services with Suspense */}
-      <div className="mt-10">
+      {/* Wrap content that should be included in PDF with PdfRenderer */}
+      <PdfRenderer ref={contentRef}>
+        {/* Tabs - Calendar, Map, Budget Views with Suspense */}
         <Suspense fallback={<ComponentLoader />}>
-          <BookingServices 
-            destination={itinerary.destination}
-            startDate={itinerary.dates.start}
-            endDate={itinerary.dates.end}
-            accommodation={itinerary.days[0]?.accommodation}
-            allAccommodations={itinerary.days
-              .map((day: { accommodation?: any; date?: string }, index: number) => {
-                if (day.accommodation) {
-                  // Add the day information to the accommodation object
-                  return {
-                    ...day.accommodation,
-                    // If not already set, determine check-in/check-out status
-                    checkInOut: day.accommodation.checkInOut || 
-                      (index === 0 ? 'check-in' : 
-                       index === itinerary.days.length - 1 ? 'check-out' : 'staying')
-                  };
-                }
-                return null;
-              })
-              .filter(Boolean)}
-            budget={itinerary.budgetLevel || 'moderate'}
+          <ItineraryTabs 
+            days={itinerary.days} 
+            budget={normalizedBudget}
+            title={itinerary.title || itinerary.tripName} 
+            summary={itinerary.overview || itinerary.description || itinerary.tripDescription || itinerary.summary}
+            travelTips={itinerary.travelTips}
+            tripId={tripId || ''}
+            updateItinerary={updateItinerary}
           />
         </Suspense>
-      </div>
+        
+        {/* Booking Services with Suspense */}
+        <div className="mt-10">
+          <Suspense fallback={<ComponentLoader />}>
+            <BookingServices 
+              destination={itinerary.destination}
+              startDate={itinerary.dates.start}
+              endDate={itinerary.dates.end}
+              accommodation={itinerary.days[0]?.accommodation}
+              allAccommodations={itinerary.days
+                .map((day: { accommodation?: any; date?: string }, index: number) => {
+                  if (day.accommodation) {
+                    // Add the day information to the accommodation object
+                    return {
+                      ...day.accommodation,
+                      // If not already set, determine check-in/check-out status
+                      checkInOut: day.accommodation.checkInOut || 
+                        (index === 0 ? 'check-in' : 
+                        index === itinerary.days.length - 1 ? 'check-out' : 'staying')
+                    };
+                  }
+                  return null;
+                })
+                .filter(Boolean)}
+              budget={itinerary.budgetLevel || 'moderate'}
+            />
+          </Suspense>
+        </div>
+      </PdfRenderer>
     </div>
   );
 } 

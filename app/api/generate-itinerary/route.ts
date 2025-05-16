@@ -198,6 +198,16 @@ function generatePrompt(formData: any): string {
     ? `\nSpecial requests from the traveler: "${formData.specialRequests.trim()}"`
     : '';
 
+  // Handle meal recommendations preference
+  const mealRecommendationsInstructions = formData.mealRecommendations 
+    ? "Include specific restaurant recommendations for EVERY meal throughout the trip. Do not leave any meals unspecified."
+    : "Include restaurant recommendations for some meals, but it's not necessary to recommend places for every meal.";
+
+  // Handle pace preference
+  const paceInstructions = formData.moreRestTime
+    ? "Schedule FEWER activities each day to allow for plenty of rest time and a more relaxed pace. Leave significant gaps between activities for relaxation, but at least still one activity each day."
+    : "Schedule a reasonable number of activities each day, balancing sightseeing with some downtime.";
+
   // Construct the prompt
   return `
 Create a personalized travel itinerary for ${formData.destination} from ${formattedStartDate} to ${formattedEndDate} (${tripDuration} days).
@@ -206,7 +216,11 @@ Tailor this itinerary for the traveler. Their purpose of the trip is ${formData.
 
 ${specialRequests}
 
-For longer trips, vary the daily structure - not every day needs to be packed with activities. Some days can have fewer activities than others, and breakfast is only needed when there are notable breakfast places nearby. When activities are in the same area, group them together on the same day to minimize travel time.
+${mealRecommendationsInstructions}
+
+${paceInstructions}
+
+For longer trips (more than 5 days), vary the daily structure - not every day needs to be packed with activities. Some days can have fewer activities than others, and breakfast is only needed when there are notable breakfast places nearby. When activities are in the same area, group them together on the same day to minimize travel time.
 
 Return a JSON itinerary with this structure:
 {
@@ -262,7 +276,10 @@ IMPORTANT GUIDELINES:
 6. Group activities and meals geographically to minimize travel time; each day should follow a logical flow.
 7. Include correct transportMode and transportCost for each activity and meal.
 8. Ensure that travel tips include one tip specifically about the typical weather during the trip and how to prepare for it.
-9. If days have a similar structure, feel free to reuse the pattern with realistic local variation.`;
+9. If days have a similar structure, feel free to reuse the pattern with realistic local variation.
+10. Make sure there is some variation in the cuisine for the meals.
+11. Follow the traveler's meal recommendation preferences - either include recommendations for EVERY meal or leave some meals unspecified.
+12. Respect the traveler's pace preference - either schedule fewer activities with more rest time or maintain a standard schedule.`;
 }
 
 // Helper function to format dates in a nicer way

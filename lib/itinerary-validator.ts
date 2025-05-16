@@ -46,6 +46,8 @@ type Itinerary = {
     end: string;
   };
   days?: Day[];
+  budgetLevel?: string;
+  travelTips?: string[];
   [key: string]: any;
 };
 
@@ -84,6 +86,28 @@ export function validateItineraryStructure(itinerary: any, formData: FormData): 
     itinerary.tripName = itinerary.title;
   } else if (!itinerary.title && itinerary.tripName) {
     itinerary.title = itinerary.tripName;
+  }
+
+  // Add budgetLevel from form data
+  itinerary.budgetLevel = formData.budget;
+  console.log(`Added budget level: ${formData.budget}`);
+  
+  // Add budget-specific travel tip if budget option is selected
+  if (formData.budget.toLowerCase() === 'budget' && itinerary.travelTips && Array.isArray(itinerary.travelTips)) {
+    const budgetTip = "Save money by shopping at local supermarkets for breakfast items, snacks, and affordable meal options instead of eating out for every meal.";
+    
+    // Check if we already have a similar tip
+    const hasSimilarTip = itinerary.travelTips.some((tip: string) => 
+      tip.toLowerCase().includes('supermarket') || 
+      tip.toLowerCase().includes('grocery') || 
+      tip.toLowerCase().includes('save money') ||
+      tip.toLowerCase().includes('budget meal')
+    );
+    
+    if (!hasSimilarTip) {
+      itinerary.travelTips.push(budgetTip);
+      console.log('Added budget-specific travel tip');
+    }
   }
 
   // Ensure days array exists and is valid

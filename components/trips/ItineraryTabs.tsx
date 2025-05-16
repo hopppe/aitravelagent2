@@ -1,9 +1,10 @@
 'use client';
 
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
-import { FaChevronLeft, FaChevronRight, FaMapMarkerAlt, FaTimes } from 'react-icons/fa';
+import { FaChevronLeft, FaChevronRight, FaMapMarkerAlt, FaTimes, FaEdit } from 'react-icons/fa';
 import { createPortal } from 'react-dom';
 import ItineraryMapView from './ItineraryMapView';
+import EditItemModal from './EditItemModal';
 
 // Add animation keyframes for scale in animation
 const scaleInKeyframes = `
@@ -99,6 +100,8 @@ interface ItineraryTabsProps {
   title?: string;
   summary?: string;
   travelTips?: string[];
+  tripId?: string;
+  updateItinerary?: (updatedItinerary: any) => void;
 }
 
 // Helper function to create a Google Maps link
@@ -147,7 +150,7 @@ const getItemColors = (type: string) => {
   }
 };
 
-export default function ItineraryTabs({ days, budget = {}, title = '', summary = '', travelTips = [] }: ItineraryTabsProps) {
+export default function ItineraryTabs({ days, budget = {}, title = '', summary = '', travelTips = [], tripId = '', updateItinerary }: ItineraryTabsProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [showNavigation, setShowNavigation] = useState(false);
   
@@ -157,9 +160,16 @@ export default function ItineraryTabs({ days, budget = {}, title = '', summary =
     columnId: number;
     position: { x: number; y: number };
   } | null>(null);
+
+  // New state for edit modal
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [currentEditItem, setCurrentEditItem] = useState<BaseItem | null>(null);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
+  const [editingDayIndex, setEditingDayIndex] = useState<number | null>(null);
   
-  // Preprocess days to handle accommodations
-  const processedDays = useMemo(() => {
+  // Convert from useMemo to useState to make it mutable
+  const initialProcessedDays = useMemo(() => {
     // Make a deep copy of days to avoid mutating the original
     const newDays = JSON.parse(JSON.stringify(days));
     
@@ -202,6 +212,13 @@ export default function ItineraryTabs({ days, budget = {}, title = '', summary =
     return newDays;
   }, [days]);
   
+  const [processedDays, setProcessedDays] = useState<Day[]>(initialProcessedDays);
+  
+  // Update processed days when days prop changes
+  useEffect(() => {
+    setProcessedDays(initialProcessedDays);
+  }, [initialProcessedDays]);
+  
   const handleScrollLeft = () => {
     if (scrollRef.current) {
       scrollRef.current.scrollBy({ left: -300, behavior: 'smooth' });
@@ -233,128 +250,307 @@ export default function ItineraryTabs({ days, budget = {}, title = '', summary =
     return () => window.removeEventListener('resize', checkOverflow);
   }, [processedDays]);
   
+  // Handle edit button click
+  const handleEditClick = (item: BaseItem, dayIndex: number) => {
+    setCurrentEditItem(item);
+    setEditingDayIndex(dayIndex);
+    setEditError(null);
+    setIsEditModalOpen(true);
+  };
+  
+  // Submit edit request
+  const handleEditSubmit = async (feedback: string) => {
+    if (!currentEditItem || editingDayIndex === null) {
+      setEditError('Missing information to complete the edit');
+      return;
+    }
+    
+    if (!tripId) {
+      setEditError('Cannot edit items in demo or unsaved trips. Please save the trip first.');
+      return;
+    }
+    
+    setIsEditing(true);
+    setEditError(null);
+    
+    try {
+      // Determine the item type
+      let itemType = 'activity';
+      let itemTitle = '';
+      
+      if ('venue' in currentEditItem || 'type' in currentEditItem && typeof currentEditItem.type === 'string' && 
+          ['breakfast', 'lunch', 'dinner', 'brunch'].includes(currentEditItem.type.toLowerCase())) {
+        itemType = 'meal';
+        // For meals, use venue/title/type as the identifier
+        itemTitle = (currentEditItem as any).venue || (currentEditItem as any).title || currentEditItem.type;
+      } else if ('name' in currentEditItem && !('time' in currentEditItem)) {
+        itemType = 'accommodation';
+        // For accommodations, use name as the identifier
+        itemTitle = (currentEditItem as any).name;
+      } else {
+        // For activities, use title as the identifier
+        itemTitle = currentEditItem.title;
+      }
+      
+      // Get the day information from the processedDays array
+      const dayData = processedDays[editingDayIndex];
+      const dayNumber = (dayData as any).day || (editingDayIndex + 1);
+      
+      console.log('Sending edit request for:', {
+        itemTitle,
+        itemType,
+        dayIndex: editingDayIndex,
+        dayNumber,
+        feedbackLength: feedback.length
+      });
+      
+      // Call the API to edit the item
+      const response = await fetch('/api/edit-itinerary-item', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          tripId,
+          itemId: itemTitle, // Use the title as the identifier
+          itemType,
+          dayIndex: editingDayIndex, // This is the zero-based index in the days array
+          userFeedback: feedback || '' // Ensure feedback is never undefined
+        }),
+      });
+      
+      const data = await response.json();
+      
+      if (!response.ok) {
+        console.error('API error response:', data);
+        throw new Error(data.error || 'Failed to edit item');
+      }
+      
+      if (!data.success || !data.editedItem) {
+        console.error('Invalid response format:', data);
+        throw new Error('Invalid response from server');
+      }
+      
+      console.log('Successfully edited item:', data.editedItem);
+      
+      // Update the itinerary in localStorage
+      try {
+        const localItinerary = localStorage.getItem('generatedItinerary');
+        if (localItinerary) {
+          const parsedItinerary = JSON.parse(localItinerary);
+          
+          // Update the appropriate item in the itinerary based on itemType
+          if (itemType === 'meal' && parsedItinerary.days[editingDayIndex].meals) {
+            // Find and replace the meal in the day's meals array
+            const mealIndex = parsedItinerary.days[editingDayIndex].meals.findIndex(
+              (meal: any) => (meal.venue === itemTitle || meal.title === itemTitle || meal.type === itemTitle)
+            );
+            
+            if (mealIndex !== -1) {
+              parsedItinerary.days[editingDayIndex].meals[mealIndex] = data.editedItem;
+            }
+          } else if (itemType === 'accommodation') {
+            // Replace the accommodation for this day
+            parsedItinerary.days[editingDayIndex].accommodation = data.editedItem;
+          } else {
+            // Find and replace the activity in the day's activities array
+            const activityIndex = parsedItinerary.days[editingDayIndex].activities.findIndex(
+              (activity: any) => activity.title === itemTitle
+            );
+            
+            if (activityIndex !== -1) {
+              parsedItinerary.days[editingDayIndex].activities[activityIndex] = data.editedItem;
+            }
+          }
+          
+          // Save updated itinerary back to localStorage
+          localStorage.setItem('generatedItinerary', JSON.stringify(parsedItinerary));
+          
+          // If updateItinerary prop is provided, use it to update parent component directly
+          if (updateItinerary) {
+            console.log('Using updateItinerary prop to update parent component');
+            updateItinerary(parsedItinerary);
+          } else {
+            // Otherwise, use custom event as fallback
+            window.dispatchEvent(new CustomEvent('itinerary-updated', { detail: parsedItinerary }));
+          }
+        }
+      } catch (storageError) {
+        console.error('Error updating localStorage:', storageError);
+      }
+      
+      // Close the modal and refresh the page
+      setIsEditModalOpen(false);
+      
+      // Instead of full page reload, we'll trigger a controlled re-render
+      // Refresh the data by reloading it from localStorage
+      const updatedItinerary = localStorage.getItem('generatedItinerary');
+      if (updatedItinerary) {
+        // Force re-render by adding a timestamp to processed days
+        const parsedItinerary = JSON.parse(updatedItinerary);
+        const newProcessedDays = parsedItinerary.days.map((day: any) => ({
+          ...day, 
+          _timestamp: Date.now()
+        }));
+        
+        // Replace the days array in the processedDays state
+        setProcessedDays(newProcessedDays);
+      }
+      
+    } catch (error: any) {
+      console.error('Error editing item:', error);
+      setEditError(error.message || 'Failed to edit item');
+    } finally {
+      setIsEditing(false);
+    }
+  };
+
   const handleClosePopup = () => {
-    console.log('Closing popup from parent component');
     setActivePopup(null);
   };
   
-  // Separate popup render to handle null check
   const renderPopup = () => {
-    if (typeof window === 'undefined' || !activePopup) return null;
-    // We've already checked that activePopup is not null
-    const { item, columnId, position } = activePopup!;
+    if (!activePopup) return null;
+    
+    const { item, columnId, position } = activePopup;
+    
     return createPortal(
-      <ItemDetailPopup
+      <ItemDetailPopup 
         item={item}
         position={position}
         onClose={handleClosePopup}
         createGoogleMapsLink={createGoogleMapsLink}
+        onEditClick={(item) => {
+          handleClosePopup();
+          handleEditClick(item, columnId);
+        }}
       />,
       document.body
     );
   };
   
   return (
-    <div className="space-y-6">
-      {/* Inject animation styles */}
+    <>
       <style dangerouslySetInnerHTML={{ __html: scaleInKeyframes }} />
-      
-      {/* Title and Summary */}
-      {(title || summary) && (
-        <div className="text-center">
-          {title && <h1 className="text-3xl font-bold text-primary">{title}</h1>}
-          {summary && <p className="text-gray-600 mt-1">{summary}</p>}
+      <div className="w-full">
+        {/* Title and Summary - visible in both screen and print */}
+        <div className="text-center trip-header">
+          {title && <h1 className="text-3xl font-bold text-primary trip-title">{title}</h1>}
+          {summary && <p className="text-gray-600 mt-1 trip-summary">{summary}</p>}
         </div>
-      )}
-      
-      {/* Calendar View - Horizontal scrolling days */}
-      <div className="relative p-4">
-        {showNavigation && (
-          <>
-            <div className="absolute left-0 top-1/2 -translate-y-1/2 z-10">
-              <button 
-                onClick={handleScrollLeft}
-                className="bg-white rounded-full p-2 shadow-md hover:bg-gray-100"
-                aria-label="Scroll left"
-              >
-                <FaChevronLeft />
-              </button>
-            </div>
-            
-            <div className="absolute right-0 top-1/2 -translate-y-1/2 z-10">
-              <button 
-                onClick={handleScrollRight}
-                className="bg-white rounded-full p-2 shadow-md hover:bg-gray-100"
-                aria-label="Scroll right"
-              >
-                <FaChevronRight />
-              </button>
-            </div>
-          </>
-        )}
         
-        <div 
-          ref={scrollRef}
-          className={`overflow-x-auto flex py-2 px-8 scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-transparent ${!showNavigation ? 'justify-center' : 'space-x-4'}`}
-          style={{ scrollbarWidth: 'thin' }}
-        >
-          {processedDays.map((day: Day, index: number) => (
-            <DayColumn 
-              key={day.date} 
-              day={day} 
-              index={index} 
-              onSelectItem={(item, event) => {
-                console.log('Item selected from DayColumn:', item);
-                // Get position from the clicked element
-                const rect = event.currentTarget.getBoundingClientRect();
-                setActivePopup({ 
-                  item, 
-                  columnId: index,
-                  position: {
-                    x: rect.left,
-                    y: rect.top
-                  }
-                });
-              }}
-              isActive={(item) => activePopup?.item?.id === item.id && activePopup?.columnId === index}
-            />
-          ))}
-        </div>
-      </div>
-      
-      {/* Map and Budget widgets - side by side */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {/* Map View */}
-        <div className="bg-white rounded-lg shadow-md overflow-hidden">
-          <div className="h-80">
-            <ItineraryMapView days={days} />
+        {/* Calendar View - Horizontal scrolling days */}
+        <div className="relative p-4 itinerary-days-view">
+          {showNavigation && (
+            <>
+              <div className="absolute left-0 top-1/2 -translate-y-1/2 z-10 print:hidden">
+                <button 
+                  onClick={handleScrollLeft}
+                  className="bg-white rounded-full p-2 shadow-md hover:bg-gray-100"
+                  aria-label="Scroll left"
+                >
+                  <FaChevronLeft />
+                </button>
+              </div>
+              
+              <div className="absolute right-0 top-1/2 -translate-y-1/2 z-10 print:hidden">
+                <button 
+                  onClick={handleScrollRight}
+                  className="bg-white rounded-full p-2 shadow-md hover:bg-gray-100"
+                  aria-label="Scroll right"
+                >
+                  <FaChevronRight />
+                </button>
+              </div>
+            </>
+          )}
+          
+          <div 
+            ref={scrollRef}
+            className={`overflow-x-auto flex py-2 px-8 scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-transparent print:block print:overflow-visible print:px-0 print:w-full ${!showNavigation ? 'justify-center' : 'space-x-4'}`}
+            style={{ scrollbarWidth: 'thin' }}
+          >
+            <div className="flex space-x-4 px-4 pb-4 pt-2 days-container print:block print:w-full print:space-x-0 print:px-0">
+              {processedDays.map((day: Day, index: number) => (
+                <DayColumn 
+                  key={`day-${index}`}
+                  day={day}
+                  index={index}
+                  onSelectItem={(item, event) => {
+                    const rect = event.currentTarget.getBoundingClientRect();
+                    const position = {
+                      x: Math.min(rect.right + 10, window.innerWidth - 300), // Ensure it's not cut off the screen
+                      y: rect.top + window.scrollY
+                    };
+                    
+                    setActivePopup({
+                      item,
+                      columnId: index,
+                      position
+                    });
+                  }}
+                  isActive={(item) => activePopup ? activePopup.item.id === item.id : false}
+                />
+              ))}
+            </div>
           </div>
         </div>
         
-        {/* Budget View */}
-        <div className="bg-white rounded-lg shadow-md p-4">
-          <BudgetView budget={budget} />
+        {/* Map and Budget widgets - side by side */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {/* Map View */}
+          <div className="bg-white rounded-lg shadow-md overflow-hidden map-container" style={{ height: '400px' }}>
+            <div className="h-full">
+              <ItineraryMapView days={days} />
+            </div>
+          </div>
+          
+          {/* Budget Breakdown */}
+          <div className="bg-white rounded-lg shadow-md overflow-hidden">
+            <div className="bg-primary text-white p-2 py-3">
+              <h2 className="text-xl font-bold">Budget Breakdown</h2>
+            </div>
+            <div className="p-4">
+              <BudgetView budget={budget} />
+            </div>
+          </div>
         </div>
+        
+        {/* Travel Tips Section */}
+        {travelTips && travelTips.length > 0 && (
+          <div className="bg-white rounded-lg shadow-md p-6 travel-tips mt-6">
+            <h3 className="text-xl font-bold text-primary mb-4">Travel Tips</h3>
+            <ul className="space-y-3">
+              {travelTips.map((tip, index) => (
+                <li key={index} className="flex items-start">
+                  <span className="text-primary mr-2 mt-1">💡</span>
+                  <span className="text-gray-700">{tip}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+        
+        {/* Modal for editing items */}
+        {isEditModalOpen && currentEditItem && (
+          <EditItemModal
+            isOpen={isEditModalOpen}
+            onClose={() => {
+              setIsEditModalOpen(false);
+              setCurrentEditItem(null);
+              setEditError(null);
+            }}
+            onSubmit={handleEditSubmit}
+            itemTitle={currentEditItem.title || (currentEditItem as any).name || (currentEditItem as any).venue || 'Item'}
+            itemType={'venue' in currentEditItem ? 'meal' : 'name' in currentEditItem ? 'accommodation' : 'activity'}
+            isSubmitting={isEditing}
+            error={editError}
+          />
+        )}
       </div>
-
-      {/* Travel Tips Section */}
-      {travelTips && travelTips.length > 0 && (
-        <div className="bg-white rounded-lg shadow-md p-6">
-          <h3 className="text-xl font-bold text-primary mb-4">Travel Tips</h3>
-          <ul className="space-y-3">
-            {travelTips.map((tip, index) => (
-              <li key={index} className="flex items-start">
-                <span className="text-primary mr-2 mt-1">💡</span>
-                <span className="text-gray-700">{tip}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
       
-      {/* Render popup at the root level using createPortal */}
       {renderPopup()}
-    </div>
+    </>
   );
 }
 
@@ -383,6 +579,9 @@ function DayColumn({
       day: 'numeric' 
     });
   };
+  
+  // Display the proper day number (either from day.day or index+1)
+  const dayNumber = (day as any).day || index + 1;
   
   // Group activities by time periods (morning, afternoon, evening) for sorting
   const getTimePeriod = (time: string) => {
@@ -528,15 +727,15 @@ function DayColumn({
   };
   
   const allDayItems = getAllDayItems();
-  console.log('All day items for day', index + 1, ':', allDayItems.map(item => ({ id: item.id, title: item.title, type: item.type })));
+  console.log('All day items for day', dayNumber, ':', allDayItems.map(item => ({ id: item.id, title: item.title, type: item.type })));
   
   return (
     <div 
-      className="flex-shrink-0 w-72 bg-gray-50 rounded-lg overflow-hidden border border-gray-200 relative"
+      className="flex-shrink-0 w-72 bg-gray-50 rounded-lg overflow-hidden border border-gray-200 relative day-container print:w-full print:mb-8"
     >
-      <div className="bg-primary text-white p-2 sticky top-0">
+      <div className="bg-primary text-white p-2 sticky top-0 day-title">
         <h3 className="font-bold">
-          Day {index + 1}: {formatDate(day.date)}
+          Day {dayNumber}: {formatDate(day.date)}
         </h3>
         {day.title && (
           <p className="text-xs text-white opacity-90 mt-1">{day.title}</p>
@@ -559,24 +758,6 @@ function DayColumn({
   );
 }
 
-// Helper function to get transportation emoji
-const getTransportEmoji = (transportMode?: string): string => {
-  if (!transportMode) return '';
-  
-  const mode = transportMode.toLowerCase();
-  if (mode.includes('walk')) return '🚶';
-  if (mode.includes('taxi') || mode.includes('cab') || mode.includes('uber')) return '🚕';
-  if (mode.includes('bus')) return '🚌';
-  if (mode.includes('train') || mode.includes('subway') || mode.includes('metro')) return '🚆';
-  if (mode.includes('bike') || mode.includes('bicycle')) return '🚲';
-  if (mode.includes('car') || mode.includes('drive')) return '🚗';
-  if (mode.includes('plane') || mode.includes('fly') || mode.includes('flight')) return '✈️';
-  if (mode.includes('boat') || mode.includes('ferry')) return '⛴️';
-  
-  // Default for other transportation modes
-  return '🚕';
-};
-
 // Component for displaying item info in day column
 const ItemCard = ({ item, isActive, onClick }: { 
   item: BaseItem; 
@@ -587,13 +768,13 @@ const ItemCard = ({ item, isActive, onClick }: {
   
   return (
     <div
-      className={`rounded-lg p-2 border ${colors.bg} ${colors.border} cursor-pointer hover:shadow-md transition-shadow ${isActive ? 'ring-2 ring-primary' : ''}`}
+      className={`rounded-lg p-2 border ${colors.bg} ${colors.border} cursor-pointer hover:shadow-md transition-shadow ${isActive ? 'ring-2 ring-primary' : ''} activity-item`}
       onClick={onClick}
     >
       <div className="flex justify-between items-start">
         <div className="flex items-start gap-2">
           <span className="text-lg">{colors.icon}</span>
-          <h4 className={`font-medium text-sm ${colors.text}`}>{item.title}</h4>
+          <h4 className={`font-medium text-sm ${colors.text} activity-title`}>{item.title}</h4>
         </div>
         <div className="text-xs font-medium text-primary">
           {typeof item.cost === 'string' 
@@ -604,7 +785,7 @@ const ItemCard = ({ item, isActive, onClick }: {
       
       {/* Only show description for activities, not for meals, to save space */}
       {item.type === 'activity' && (
-        <p className="text-xs text-gray-700 mt-1 line-clamp-1">
+        <p className="text-xs text-gray-700 mt-1 line-clamp-1 activity-description">
           {item.description.length > 60 
             ? `${item.description.substring(0, 60)}...` 
             : item.description}
@@ -616,24 +797,26 @@ const ItemCard = ({ item, isActive, onClick }: {
           <span className="mr-1">📍</span> 
           <span className="truncate max-w-[90px]">{item.location || "No location"}</span>
         </div>
-        <div className="flex items-center text-xs text-gray-500">
+        <div className="flex items-center text-xs text-gray-500 activity-time">
           <span className="mr-1">⏱️</span> {item.time}
         </div>
       </div>
     </div>
   );
-};
+}
 
 function ItemDetailPopup({ 
   item, 
   position,
   onClose,
-  createGoogleMapsLink 
+  createGoogleMapsLink,
+  onEditClick 
 }: { 
   item: BaseItem;
   position: { x: number; y: number };
   onClose: () => void;
   createGoogleMapsLink: (coordinates: Location, title: string, location?: string) => string;
+  onEditClick?: (item: BaseItem) => void;
 }) {
   const colors = getItemColors(item.type);
   const [isVerifyingLocation, setIsVerifyingLocation] = useState(false);
@@ -723,13 +906,28 @@ function ItemDetailPopup({
       >
         {/* Header */}
         <div className={`${colors.bg} px-5 py-4 relative`}>
-          <button 
-            onClick={onClose}
-            className="absolute right-4 top-4 text-gray-500 hover:text-gray-700 rounded-full h-8 w-8 flex items-center justify-center focus:outline-none focus:ring-2 focus:ring-primary"
-            aria-label="Close"
-          >
-            <FaTimes size={16} />
-          </button>
+          <div className="absolute right-4 top-4 flex space-x-2">
+            {onEditClick && (
+              <button
+                onClick={() => {
+                  onClose();
+                  onEditClick(item);
+                }}
+                className="text-gray-500 hover:text-primary rounded-full h-8 w-8 flex items-center justify-center focus:outline-none focus:ring-2 focus:ring-primary"
+                aria-label="Edit"
+                title="Edit this item"
+              >
+                <FaEdit size={16} />
+              </button>
+            )}
+            <button 
+              onClick={onClose}
+              className="text-gray-500 hover:text-gray-700 rounded-full h-8 w-8 flex items-center justify-center focus:outline-none focus:ring-2 focus:ring-primary"
+              aria-label="Close"
+            >
+              <FaTimes size={16} />
+            </button>
+          </div>
           
           <div className="flex items-center gap-3">
             <span className="text-2xl">{colors.icon}</span>
@@ -823,7 +1021,7 @@ function BudgetView({ budget }: { budget: Budget }) {
         <p className="text-sm text-gray-500">Total Trip Budget</p>
       </div>
       
-      <div className="space-y-3">
+      <div className="space-y-3 budget-table">
         <div className="flex justify-between items-center pb-1 border-b text-sm">
           <p className="font-medium">Category</p>
           <p className="font-medium">Amount</p>
@@ -885,3 +1083,34 @@ function BudgetView({ budget }: { budget: Budget }) {
     </div>
   );
 }
+
+// Helper function to get transportation emoji
+const getTransportEmoji = (transportMode?: string): string => {
+  if (!transportMode) return '';
+  
+  const mode = transportMode.toLowerCase();
+  if (mode.includes('walk')) return '🚶';
+  if (mode.includes('taxi') || mode.includes('cab') || mode.includes('uber')) return '🚕';
+  if (mode.includes('bus')) return '🚌';
+  if (mode.includes('train') || mode.includes('subway') || mode.includes('metro')) return '🚆';
+  if (mode.includes('bike') || mode.includes('bicycle')) return '🚲';
+  if (mode.includes('car') || mode.includes('drive')) return '🚗';
+  if (mode.includes('plane') || mode.includes('fly') || mode.includes('flight')) return '✈️';
+  if (mode.includes('boat') || mode.includes('ferry')) return '⛴️';
+  
+  // Default for other transportation modes
+  return '🚕';
+};
+
+// Helper function to get emoji based on item type
+const getItemTypeEmoji = (item: BaseItem): string => {
+  if (item.type === 'meal') {
+    return '🍽️';
+  } else if (item.type === 'accommodation') {
+    return '🏨';
+  } else if (item.transportMode) {
+    return getTransportEmoji(item.transportMode);
+  } else {
+    return '🗺️'; // Default for activities
+  }
+};

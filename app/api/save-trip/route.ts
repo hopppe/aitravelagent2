@@ -23,7 +23,19 @@ export async function POST(request: Request) {
       );
     }
     
-    logger.info('Received trip data to save');
+    logger.info('Received trip data to save', { 
+      has_id: !!tripData.saved_trip_id,
+      size: JSON.stringify(tripData).length
+    });
+
+    // Verify Supabase is configured properly
+    if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
+      logger.error('Supabase environment variables are not configured properly');
+      return NextResponse.json(
+        { error: 'Database configuration error' },
+        { status: 500 }
+      );
+    }
 
     // Try to get user ID if user is authenticated
     let userId = null;
@@ -48,9 +60,6 @@ export async function POST(request: Request) {
       logger.error('Error verifying authentication:', authError);
     }
     
-    // Generate a unique ID for the trip
-    const tripId = `trip_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
-    
     // Extract prompt if available
     const prompt = tripData.prompt || null;
     
@@ -58,44 +67,67 @@ export async function POST(request: Request) {
     if (tripData.saved_trip_id) {
       logger.info(`Trip already has ID ${tripData.saved_trip_id}, updating instead of inserting`);
       
-      const updateData: any = {
-        trip_data: tripData,
-        prompt: prompt,
-        updated_at: new Date().toISOString()
-      };
-      
-      // If we have a user ID, add it to the update
-      if (userId) {
-        updateData.user_id = userId;
-      }
-      
-      // Update existing trip
-      const { error: updateError } = await supabase
+      // Verify that the trip with this ID exists before updating
+      const { data: existingTrip, error: findError } = await supabase
         .from('trips')
-        .update(updateData)
-        .eq('id', tripData.saved_trip_id);
-      
-      if (updateError) {
-        logger.error('Failed to update trip:', updateError);
-        logger.error('Error details:', {
-          code: updateError.code,
-          details: updateError.details,
-          hint: updateError.hint,
-          message: updateError.message
+        .select('id')
+        .eq('id', tripData.saved_trip_id)
+        .single();
+        
+      if (findError || !existingTrip) {
+        logger.warn(`Trip with ID ${tripData.saved_trip_id} not found, will create a new trip instead`);
+        // If trip doesn't exist, create a new one instead of updating
+        tripData.saved_trip_id = null; // Clear the ID to trigger a new trip creation
+      } else {
+        logger.info(`Found existing trip with ID ${tripData.saved_trip_id}, proceeding with update`);
+        
+        const updateData: any = {
+          trip_data: tripData,
+          prompt: prompt,
+          updated_at: new Date().toISOString()
+        };
+        
+        // If we have a user ID, add it to the update
+        if (userId) {
+          updateData.user_id = userId;
+        }
+        
+        // Update existing trip
+        const { error: updateError } = await supabase
+          .from('trips')
+          .update(updateData)
+          .eq('id', tripData.saved_trip_id);
+        
+        if (updateError) {
+          logger.error('Failed to update trip:', updateError);
+          logger.error('Error details:', {
+            code: updateError.code,
+            details: updateError.details,
+            hint: updateError.hint,
+            message: updateError.message
+          });
+          return NextResponse.json(
+            { error: `Failed to update trip: ${updateError.message}` },
+            { status: 500 }
+          );
+        }
+        
+        logger.info(`Trip updated successfully with ID: ${tripData.saved_trip_id}`);
+        
+        return NextResponse.json({ 
+          success: true, 
+          tripId: tripData.saved_trip_id
         });
-        return NextResponse.json(
-          { error: `Failed to update trip: ${updateError.message}` },
-          { status: 500 }
-        );
       }
-      
-      logger.info(`Trip updated successfully with ID: ${tripData.saved_trip_id}`);
-      
-      return NextResponse.json({ 
-        success: true, 
-        tripId: tripData.saved_trip_id
-      });
     }
+    
+    // Generate a unique ID for the trip with more entropy
+    const timestamp = Date.now();
+    const random = Math.random().toString(36).substring(2, 15) + 
+                   Math.random().toString(36).substring(2, 15);
+    const tripId = `trip_${timestamp}_${random}`;
+    
+    logger.info(`Creating new trip with generated ID: ${tripId}`);
     
     // Prepare data for insertion
     const insertData: any = {
@@ -112,6 +144,18 @@ export async function POST(request: Request) {
       logger.info(`Associating trip with user ID: ${userId}`);
     } else {
       logger.info('No user ID available, creating anonymous trip');
+    }
+    
+    // Test Supabase connection before trying to insert
+    try {
+      const { data: testData, error: testError } = await supabase.from('trips').select('count(*)').limit(1);
+      if (testError) {
+        logger.error('Supabase connection test failed:', testError);
+      } else {
+        logger.info('Supabase connection test successful');
+      }
+    } catch (testErr) {
+      logger.error('Error testing Supabase connection:', testErr);
     }
     
     // Insert new trip

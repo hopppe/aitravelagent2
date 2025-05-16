@@ -86,12 +86,16 @@ export default function TripSurveyForm() {
     budget: '',
     preferences: [] as string[],
     specialRequests: '',
+    mealRecommendations: false,
+    moreRestTime: false,
   });
   
   // Add loading and job tracking state
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [errorDetails, setErrorDetails] = useState<string | null>(null);
+  // Add date validation error state
+  const [dateError, setDateError] = useState<string | null>(null);
 
   // Force a page fresh load when initializing to clear any cached code/vars
   useEffect(() => {
@@ -105,9 +109,43 @@ export default function TripSurveyForm() {
   }, []);
 
   // Handle text input changes
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
+    
+    // Clear date error if modifying dates
+    if (name === 'startDate' || name === 'endDate') {
+      setDateError(null);
+    }
+
     setFormData({ ...formData, [name]: value });
+
+    // Validate dates when either date changes
+    if (name === 'startDate' || name === 'endDate') {
+      validateDates(name === 'startDate' ? value : formData.startDate, 
+                   name === 'endDate' ? value : formData.endDate);
+    }
+  };
+
+  // Validate dates to ensure end date is not before start date
+  const validateDates = (start: string, end: string) => {
+    if (start && end) {
+      const startDate = new Date(start);
+      const endDate = new Date(end);
+      
+      if (endDate < startDate) {
+        setDateError('End date cannot be before start date');
+        return false;
+      } else {
+        setDateError(null);
+        return true;
+      }
+    }
+    return true; // If either date is not set, validation passes
+  };
+
+  // Handle checkbox changes for special request options
+  const handleCheckboxChange = (name: string, checked: boolean) => {
+    setFormData({ ...formData, [name]: checked });
   };
 
   // Handle radio button selection
@@ -131,7 +169,10 @@ export default function TripSurveyForm() {
         if (formData.destination) setCurrentStep('dates');
         break;
       case 'dates':
-        if (formData.startDate && formData.endDate) setCurrentStep('purpose');
+        // Ensure dates are valid before proceeding
+        if (formData.startDate && formData.endDate && validateDates(formData.startDate, formData.endDate)) {
+          setCurrentStep('purpose');
+        }
         break;
       case 'purpose':
         if (formData.purpose) setCurrentStep('budget');
@@ -224,6 +265,16 @@ export default function TripSurveyForm() {
       }
       
       console.log('Itinerary validation successful');
+
+      // Clear any existing trip IDs from localStorage to ensure this is treated as a new trip
+      console.log('Clearing any saved trip IDs to create a fresh trip');
+      localStorage.removeItem('lastSavedTripId');
+      
+      // Remove any existing saved_trip_id if present
+      if (validatedItinerary.saved_trip_id) {
+        console.log('Removing existing saved_trip_id from itinerary');
+        delete validatedItinerary.saved_trip_id;
+      }
       
       // Store in localStorage
       const itineraryJson = JSON.stringify(validatedItinerary);
@@ -265,6 +316,8 @@ export default function TripSurveyForm() {
         );
       
       case 'dates':
+        const today = new Date().toISOString().split('T')[0]; // Get today's date in YYYY-MM-DD format
+        
         return (
           <div className="space-y-6">
             <h2 className="text-xl font-semibold">When are you traveling?</h2>
@@ -279,7 +332,9 @@ export default function TripSurveyForm() {
                   type="date"
                   value={formData.startDate}
                   onChange={handleInputChange}
-                  className="w-full p-4 text-base focus:ring-primary focus:border-primary calendar-input"
+                  min={today}
+                  className="w-full p-4 text-base focus:ring-primary focus:border-primary calendar-input h-14 cursor-pointer"
+                  aria-label="Select start date"
                   required
                 />
               </div>
@@ -293,11 +348,21 @@ export default function TripSurveyForm() {
                   type="date"
                   value={formData.endDate}
                   onChange={handleInputChange}
-                  className="w-full p-4 text-base focus:ring-primary focus:border-primary calendar-input"
+                  min={formData.startDate || today}
+                  className="w-full p-4 text-base focus:ring-primary focus:border-primary calendar-input h-14 cursor-pointer"
+                  aria-label="Select end date"
                   required
                 />
               </div>
             </div>
+            {dateError && (
+              <div className="text-red-500 text-sm mt-2 bg-red-50 p-2 rounded-md border border-red-100">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 inline-block mr-1" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                </svg>
+                {dateError}
+              </div>
+            )}
             <p className="text-sm text-gray-500 italic mt-2">Select your travel dates to help us plan the perfect itinerary length.</p>
           </div>
         );
@@ -414,18 +479,58 @@ export default function TripSurveyForm() {
             <h2 className="text-xl font-semibold">Any special requests?</h2>
             <p className="text-gray-600 text-sm">Let us know if you have specific activities or experiences in mind.</p>
             
-            <div>
-              <label htmlFor="specialRequests" className="block text-sm font-medium text-gray-700 mb-1">
-                Special Requests (Optional)
-              </label>
-              <textarea
-                id="specialRequests"
-                name="specialRequests"
-                value={formData.specialRequests}
-                onChange={(e) => setFormData({ ...formData, specialRequests: e.target.value })}
-                className="w-full p-4 min-h-[120px] border border-gray-300 rounded-md focus:ring-primary focus:border-primary"
-                placeholder="Examples: 'I'd like to go hiking in the mountains', 'Include a food tour', 'Stay near the beach', etc."
-              />
+            <div className="space-y-6">
+              <div>
+                <label htmlFor="specialRequests" className="block text-sm font-medium text-gray-700 mb-1">
+                  Special Requests (Optional)
+                </label>
+                <textarea
+                  id="specialRequests"
+                  name="specialRequests"
+                  value={formData.specialRequests}
+                  onChange={(e) => setFormData({ ...formData, specialRequests: e.target.value })}
+                  className="w-full p-4 min-h-[120px] border border-gray-300 rounded-md focus:ring-primary focus:border-primary"
+                  placeholder="Examples: 'I'd like to go hiking in the mountains', 'Include a food tour', 'Stay near the beach', etc."
+                />
+              </div>
+              
+              <div className="space-y-4 pt-2 border-t border-gray-200">
+                <h3 className="text-md font-medium mt-4">Additional Options</h3>
+                
+                <div 
+                  className="flex items-start bg-white p-4 border border-gray-200 rounded-md hover:bg-gray-50 cursor-pointer"
+                  onClick={() => handleCheckboxChange('mealRecommendations', !formData.mealRecommendations)}
+                >
+                  <div className="h-5 w-5 flex items-center justify-center mt-0.5">
+                    <div 
+                      className={`${formData.mealRecommendations 
+                        ? 'h-4 w-4 bg-primary rounded-sm' 
+                        : 'h-4 w-4 border border-gray-400 rounded-sm'}`}
+                    ></div>
+                  </div>
+                  <div className="ml-3">
+                    <span className="font-medium text-gray-700">Include meal recommendations for every meal</span>
+                    <p className="text-sm text-gray-500 mt-1">Get restaurant suggestions for every meal instead of leaving some meals open</p>
+                  </div>
+                </div>
+                
+                <div 
+                  className="flex items-start bg-white p-4 border border-gray-200 rounded-md hover:bg-gray-50 cursor-pointer"
+                  onClick={() => handleCheckboxChange('moreRestTime', !formData.moreRestTime)}
+                >
+                  <div className="h-5 w-5 flex items-center justify-center mt-0.5">
+                    <div 
+                      className={`${formData.moreRestTime 
+                        ? 'h-4 w-4 bg-primary rounded-sm' 
+                        : 'h-4 w-4 border border-gray-400 rounded-sm'}`}
+                    ></div>
+                  </div>
+                  <div className="ml-3">
+                    <span className="font-medium text-gray-700">More relaxed schedule</span>
+                    <p className="text-sm text-gray-500 mt-1">Leave more room for rest by scheduling fewer activities throughout your trip</p>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         );
@@ -442,7 +547,7 @@ export default function TripSurveyForm() {
       case 'destination':
         return !!formData.destination;
       case 'dates':
-        return !!formData.startDate && !!formData.endDate;
+        return !!formData.startDate && !!formData.endDate && !dateError;
       case 'purpose':
         return !!formData.purpose;
       case 'budget':
@@ -505,6 +610,8 @@ export default function TripSurveyForm() {
             <li>Be specific about activities you want</li>
             <li>Mention places you'd like to visit</li>
             <li>Include any accessibility needs</li>
+            <li>Choose meal recommendations if you prefer not to search for restaurants</li>
+            <li>Select relaxed schedule if you prefer a slower pace</li>
           </ul>
         );
       default:

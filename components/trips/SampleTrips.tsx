@@ -155,6 +155,12 @@ export default function SampleTrips() {
       // Mark this as an example trip
       tripData.isExample = true;
       
+      // Ensure it doesn't have a saved_trip_id to prevent accidental overwrites
+      delete tripData.saved_trip_id;
+      
+      // Clear any existing saved trip IDs from localStorage
+      localStorage.removeItem('lastSavedTripId');
+      
       // Store the selected trip in localStorage for the trip page to access
       localStorage.setItem('generatedItinerary', JSON.stringify(tripData));
     } catch (error) {

@@ -1,0 +1,317 @@
+/* Print-specific styles for PDF export */
+@media print {
+  /* Reset some defaults to ensure consistent printing */
+  * {
+    -webkit-print-color-adjust: exact !important;
+    color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* Hide elements not needed in the printout */
+  header, 
+  footer, 
+  nav, 
+  .no-print, 
+  button:not(.print-include), 
+  input[type="button"], 
+  input[type="submit"],
+  .tab-navigation {
+    display: none !important;
+  }
+
+  /* Make sure background colors and images print */
+  body {
+    padding: 0 !important;
+    margin: 0 !important;
+    background-color: #fff !important;
+    color: #000 !important;
+    font-size: 14px !important;
+    width: 100% !important;
+  }
+
+  /* Show all content in the printable area */
+  .pdf-container {
+    display: block !important;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: visible !important;
+    page-break-inside: auto !important;
+  }
+
+  /* Ensure images print correctly */
+  img {
+    page-break-inside: avoid !important;
+    max-width: 100% !important;
+    display: block !important;
+  }
+  
+  /* Force the days container to display in block mode for printing */
+  .days-container {
+    display: block !important;
+    width: 100% !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  /* Ensure each day starts on a new page */
+  .day-container {
+    page-break-before: always !important;
+    margin-top: 1.5cm !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    border: 1px solid #eee !important;
+    box-shadow: none !important;
+    padding: 0.5cm !important;
+    float: none !important;
+    display: block !important;
+  }
+  
+  /* First day doesn't need a page break */
+  .day-container:first-of-type {
+    page-break-before: avoid !important;
+    margin-top: 0 !important;
+  }
+
+  /* Trip header styling */
+  .trip-header {
+    margin-bottom: 1cm !important;
+    padding-bottom: 0.5cm !important;
+    border-bottom: 1px solid #ccc !important;
+  }
+
+  /* Trip title */
+  .trip-title {
+    font-size: 24px !important;
+    font-weight: bold !important;
+    color: #000 !important;
+    margin-bottom: 0.5cm !important;
+    text-align: center !important;
+  }
+
+  /* Trip subtitle */
+  .trip-summary {
+    font-size: 16px !important;
+    color: #333 !important;
+    margin-bottom: 0.5cm !important;
+    text-align: center !important;
+  }
+
+  /* Day title formatting */
+  .day-title {
+    font-size: 20px !important;
+    font-weight: bold !important;
+    color: #000 !important;
+    margin-bottom: 0.25cm !important;
+    padding-bottom: 0.1cm !important;
+    border-bottom: 1px solid #eee !important;
+    background-color: transparent !important;  /* Override colored background */
+    position: static !important;  /* Override sticky positioning */
+  }
+
+  /* Make day title text black for printing */
+  .day-title h3, 
+  .day-title p {
+    color: #000 !important;
+  }
+
+  /* Activity formatting */
+  .activity-item {
+    margin-bottom: 0.3cm !important;
+    page-break-inside: avoid !important;
+    border: 1px solid #ddd !important;
+    padding: 0.2cm !important;
+  }
+
+  /* Activity title */
+  .activity-title {
+    font-weight: bold !important;
+    color: #000 !important;
+    margin-bottom: 0.1cm !important;
+  }
+
+  /* Activity description */
+  .activity-description {
+    color: #333 !important;
+    margin-bottom: 0.1cm !important;
+    /* Remove line clamp for printing */
+    -webkit-line-clamp: none !important;
+    display: block !important;
+    overflow: visible !important;
+    text-overflow: clip !important;
+    white-space: normal !important;
+  }
+
+  /* Activity time */
+  .activity-time {
+    color: #666 !important;
+    font-style: italic !important;
+  }
+  
+  /* Fix overflow container issues */
+  .overflow-x-auto {
+    overflow: visible !important;
+    width: 100% !important;
+    display: block !important;
+  }
+  
+  /* Fix flexbox layout for days */
+  .flex {
+    display: block !important;
+  }
+  
+  /* Specific fix for the days scrolling container */
+  [ref="scrollRef"] {
+    overflow: visible !important;
+    display: block !important;
+    width: 100% !important;
+  }
+
+  /* Override any map container sizing issues */
+  .map-container {
+    height: 15cm !important;
+    width: 100% !important;
+    page-break-inside: avoid !important;
+    page-break-before: always !important;
+    margin-top: 1cm !important;
+    box-shadow: none !important;
+  }
+
+  /* Budget section formatting */
+  .budget-section {
+    page-break-before: always !important;
+    margin-top: 1cm !important;
+    box-shadow: none !important;
+    padding: 0.5cm !important;
+    border: 1px solid #eee !important;
+  }
+
+  /* Budget table */
+  .budget-table {
+    width: 100% !important;
+  }
+
+  /* For the table version used in print */
+  @page {
+    size: portrait !important;
+  }
+
+  .budget-table table {
+    width: 100% !important;
+    border-collapse: collapse !important;
+  }
+
+  .budget-table table th,
+  .budget-table table td {
+    border: 1px solid #ccc !important;
+    padding: 0.2cm !important;
+    text-align: left !important;
+  }
+
+  .budget-table table th {
+    background-color: #f5f5f5 !important;
+    font-weight: bold !important;
+  }
+
+  /* For the div version used in normal view */
+  .budget-table > div {
+    margin-bottom: 0.2cm !important;
+  }
+
+  /* Accommodation section */
+  .accommodation-section {
+    page-break-inside: avoid !important;
+  }
+
+  /* Travel tips section */
+  .travel-tips {
+    page-break-before: always !important;
+    margin-top: 1cm !important;
+    box-shadow: none !important;
+    padding: 0.5cm !important;
+    border: 1px solid #eee !important;
+  }
+
+  .travel-tips h3 {
+    color: #000 !important;
+  }
+
+  .travel-tips ul {
+    padding-left: 1cm !important;
+  }
+
+  .travel-tips li {
+    margin-bottom: 0.2cm !important;
+  }
+
+  /* Tables (general) */
+  table {
+    width: 100% !important;
+    border-collapse: collapse !important;
+  }
+
+  table th,
+  table td {
+    border: 1px solid #ddd !important;
+    padding: 8px !important;
+  }
+
+  table th {
+    padding-top: 12px !important;
+    padding-bottom: 12px !important;
+    text-align: left !important;
+    background-color: #f2f2f2 !important;
+    color: black !important;
+  }
+
+  /* Avoid breaking inside critical content */
+  h1, h2, h3, h4, h5, h6, 
+  img, 
+  table, 
+  figure, 
+  .accommodation-section,
+  .activity-item {
+    page-break-inside: avoid !important;
+  }
+
+  /* Fix grid layout for printing */
+  .grid {
+    display: block !important;
+  }
+
+  /* Footer with branding */
+  .print-footer {
+    display: block !important;
+    position: fixed !important;
+    bottom: 0 !important;
+    width: 100% !important;
+    text-align: center !important;
+    font-size: 10px !important;
+    color: #888 !important;
+    border-top: 1px solid #eee !important;
+    padding-top: 0.2cm !important;
+  }
+
+  /* Logo in the footer */
+  .print-footer-logo {
+    height: 0.5cm !important;
+    display: inline-block !important;
+    vertical-align: middle !important;
+    margin-right: 0.2cm !important;
+  }
+
+  /* Page numbers */
+  @page {
+    margin: 1cm !important;
+    size: portrait !important;
+  }
+
+  @page :first {
+    margin-top: 2cm !important;
+  }
+
+  /* Remove any hidden class during print */
+  .hidden {
+    display: block !important;
+  }
+} 
